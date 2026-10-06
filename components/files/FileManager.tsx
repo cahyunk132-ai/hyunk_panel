@@ -254,11 +254,11 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line-soft text-left text-[11px] uppercase tracking-wide text-ink-faint">
-                <th className="w-8 px-3 py-2.5" />
+                <th className="hidden w-8 px-3 py-2.5 md:table-cell" />
                 <th className="px-3 py-2.5">Nama</th>
-                <th className="hidden w-28 px-3 py-2.5 sm:table-cell">Ukuran</th>
+                <th className="hidden w-28 px-3 py-2.5 md:table-cell">Ukuran</th>
                 <th className="hidden w-44 px-3 py-2.5 md:table-cell">Diubah</th>
-                <th className="w-40 px-3 py-2.5 text-right">Aksi</th>
+                <th className="w-28 px-2 py-2.5 text-right md:w-40 md:px-3">Aksi</th>
               </tr>
             </thead>
             <tbody>
@@ -267,9 +267,10 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
                   className="cursor-pointer border-b border-line-soft text-ink-muted hover:bg-base-800"
                   onClick={() => setDirectory(parentPath(directory))}
                 >
-                  <td className="px-3 py-2" />
+                  <td className="hidden px-3 py-2 md:table-cell" />
                   <td className="px-3 py-2 font-mono text-xs">../</td>
-                  <td colSpan={3} />
+                  <td colSpan={3} className="hidden md:table-cell" />
+                  <td className="md:hidden" />
                 </tr>
               )}
               {sorted.map((f) => {
@@ -280,7 +281,7 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
                     key={f.name}
                     className="group border-b border-line-soft/60 last:border-0 hover:bg-base-800/70"
                   >
-                    <td className="px-3 py-2">
+                    <td className="hidden px-3 py-2 md:table-cell">
                       <input
                         type="checkbox"
                         checked={selected.has(f.name)}
@@ -295,12 +296,12 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
                         else setEditorFile(fullPath);
                       }}
                     >
-                      <span className="flex items-center gap-2">
+                      <span className="flex min-w-0 items-center gap-2">
                         <span className="text-base">
                           {f.directory ? '📁' : f.symlink ? '🔗' : '📄'}
                         </span>
                         <span
-                          className={`truncate font-mono text-xs ${
+                          className={`min-w-0 truncate font-mono text-xs ${
                             f.directory ? 'font-semibold text-accent' : 'text-ink group-hover:text-accent'
                           }`}
                         >
@@ -309,14 +310,14 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
                         {isArchive && !f.directory && <Badge tone="yellow">arsip</Badge>}
                       </span>
                     </td>
-                    <td className="hidden px-3 py-2 font-mono text-xs text-ink-muted sm:table-cell">
+                    <td className="hidden px-3 py-2 font-mono text-xs text-ink-muted md:table-cell">
                       {f.directory ? '—' : formatBytes(f.size)}
                     </td>
                     <td className="hidden px-3 py-2 text-xs text-ink-muted md:table-cell">
                       {f.modified ? new Date(f.modified).toLocaleString('id-ID') : '—'}
                     </td>
                     <td className="px-3 py-2">
-                      <div className="flex items-center justify-end gap-1 text-xs opacity-0 transition-opacity group-hover:opacity-100">
+                      <div className="flex items-center justify-end gap-1 text-xs opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
                         {!f.directory && (
                           <button
                             onClick={() => download(f.name)}

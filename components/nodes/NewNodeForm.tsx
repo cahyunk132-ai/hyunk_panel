@@ -52,7 +52,7 @@ export function NewNodeButton() {
           <Field label="Nama node" required>
             <Input name="name" placeholder="Node 3 — SG" required />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Field label="FQDN" required>
               <Input name="fqdn" placeholder="node3.example.com" required />
             </Field>
@@ -63,7 +63,7 @@ export function NewNodeButton() {
           <Field label="Node UUID" hint="uuid di /etc/pterodactyl/config.yml" required>
             <Input name="uuid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" required />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Field label="Token ID" hint="field token_id di config.yml" required>
               <Input name="token_id" required />
             </Field>

@@ -112,7 +112,7 @@ export function NewServerForm({ nodes }: { nodes: NodeOption[] }) {
         subtitle="Panel TIDAK melakukan auto-provisioning kecuali Anda mencentang opsi di bawah — data existing aman"
       />
       <form onSubmit={onSubmit} className="space-y-5 px-5 py-4">
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field label="Nama server" required>
             <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
           </Field>
@@ -127,7 +127,7 @@ export function NewServerForm({ nodes }: { nodes: NodeOption[] }) {
           </Field>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Field label="Port primary" required>
             <Input
               type="number"

@@ -191,7 +191,7 @@ export function UserDetailManager({
           {available.length > 0 && (
             <form onSubmit={assign} className="space-y-3 border-t border-line-soft pt-4">
               <p className="text-xs font-medium text-ink-muted">Assign server baru</p>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <Select
                   value={selectedServer}
                   onChange={(e) => setSelectedServer(e.target.value)}

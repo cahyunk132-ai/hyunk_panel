@@ -122,9 +122,19 @@ export function buildServerSettings(
   server: ServerRow,
   allocation: Pick<AllocationRow, 'ip' | 'port'> | null,
   nodeUuid: string,
+  assignedAllocations: Array<Pick<AllocationRow, 'id' | 'ip' | 'port'>> = [],
 ): RemoteServerSettings {
   const ip = allocation?.ip ?? '0.0.0.0';
   const port = allocation?.port ?? 0;
+  const mappings: Record<string, number[]> = {};
+  const seen = new Set<string>();
+  for (const current of [allocation, ...assignedAllocations]) {
+    if (!current) continue;
+    const key = `${current.ip}:${current.port}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    (mappings[current.ip] ??= []).push(current.port);
+  }
   return {
     uuid: server.uuid,
     meta: { name: server.name, description: null },
@@ -135,7 +145,7 @@ export function buildServerSettings(
     allocations: {
       force_outgoing_ip: false,
       default: { ip, port },
-      mappings: { [ip]: [port] },
+      mappings,
     },
     build: {
       memory_limit: server.memory_mb,

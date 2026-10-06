@@ -97,17 +97,17 @@ export function ConfirmDangerModal({
             autoComplete="off"
           />
         </div>
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-col-reverse gap-2 md:flex-row md:justify-end">
           <button
             onClick={onClose}
-            className="rounded-lg border border-line bg-base-600 px-4 py-2 text-sm text-ink-muted hover:text-ink"
+            className="w-full rounded-lg border border-line bg-base-600 px-4 py-2 text-sm text-ink-muted hover:text-ink md:w-auto"
           >
             Batal
           </button>
           <button
             onClick={onConfirm}
             disabled={typedValue !== confirmText || loading}
-            className="rounded-lg bg-red-500/80 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-40"
+            className="w-full rounded-lg bg-red-500/80 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-40 md:w-auto"
           >
             {loading ? 'Memproses…' : dangerLabel}
           </button>

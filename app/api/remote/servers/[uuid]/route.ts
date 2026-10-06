@@ -29,18 +29,16 @@ export async function GET(request: NextRequest, { params }: { params: { uuid: st
   }
 
   const typed = server as ServerRow;
-  let allocation: AllocationRow | null = null;
-  if (typed.allocation_id) {
-    const { data } = await service
-      .from('allocations')
-      .select('*')
-      .eq('id', typed.allocation_id)
-      .maybeSingle();
-    allocation = (data as AllocationRow | null) ?? null;
-  }
+  const [{ data: primaryAllocation }, { data: assignedAllocations }] = await Promise.all([
+    typed.allocation_id
+      ? service.from('allocations').select('*').eq('id', typed.allocation_id).maybeSingle()
+      : Promise.resolve({ data: null } as const),
+    service.from('allocations').select('id, ip, port').eq('assigned_to', typed.id).eq('node_id', node.id),
+  ]);
+  const allocation = (primaryAllocation as AllocationRow | null) ?? null;
 
   return Response.json({
-    settings: buildServerSettings(typed, allocation, node.uuid),
+    settings: buildServerSettings(typed, allocation, node.uuid, assignedAllocations ?? []),
     process_configuration: buildProcessConfiguration(typed),
   });
 }

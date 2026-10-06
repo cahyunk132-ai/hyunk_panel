@@ -16,13 +16,13 @@ export default async function ConsolePage({ params }: { params: { id: string } }
   const server = result.server;
 
   return (
-    <div className="flex h-full min-h-[420px] flex-col gap-3">
+    <div className="flex h-full min-h-[360px] flex-col gap-3 md:min-h-[420px]">
       <ConsoleResourceBar
         serverId={server.id}
         cpuLimit={server.cpu_limit}
         diskMb={server.disk_mb}
       />
-      <div className="min-h-[360px] flex-1">
+      <div className="min-h-[280px] flex-1 md:min-h-[360px]">
         <Console serverId={server.id} />
       </div>
     </div>

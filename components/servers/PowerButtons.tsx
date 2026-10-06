@@ -44,7 +44,7 @@ export function PowerButtons({
   const isOffline = status === 'offline';
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="grid w-full grid-cols-2 gap-2 md:flex md:w-auto md:flex-wrap md:items-center md:gap-2">
       <Button
         size="sm"
         variant="success"
@@ -81,7 +81,7 @@ export function PowerButtons({
       >
         ✕ Kill
       </Button>
-      {error && <span className="text-xs text-red-400">{error}</span>}
+      {error && <span className="col-span-2 text-xs text-red-400 md:col-span-1">{error}</span>}
 
       <Modal open={confirmKill} onClose={() => setConfirmKill(false)} title="Kill server?">
         <p className="text-sm text-ink-muted">

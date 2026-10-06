@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 interface NavItem {
   href: string;
@@ -81,11 +82,37 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
-export function Sidebar({ isAdmin }: { isAdmin: boolean }) {
+export function Sidebar({
+  isAdmin,
+  username,
+  isOpen,
+  onClose,
+}: {
+  isAdmin: boolean;
+  username: string;
+  isOpen: boolean;
+  onClose: () => void;
+}) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function signOut() {
+    setSigningOut(true);
+    try {
+      await fetch('/api/auth/signout', { method: 'POST' });
+    } finally {
+      router.replace('/login');
+      router.refresh();
+    }
+  }
 
   return (
-    <aside className="flex w-56 shrink-0 flex-col border-r border-line-soft bg-base-950/80">
+    <aside
+      className={`fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-line-soft bg-base-950/95 shadow-2xl transition-transform duration-200 md:relative md:z-auto md:w-56 md:translate-x-0 md:bg-base-950/80 md:shadow-none ${
+        isOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}
+    >
       <div className="flex h-14 items-center gap-2.5 border-b border-line-soft px-5">
         <svg className="h-7 w-7" viewBox="0 0 64 64">
           <rect width="64" height="64" rx="14" fill="#171b26" />
@@ -105,6 +132,7 @@ export function Sidebar({ isAdmin }: { isAdmin: boolean }) {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onClose}
               className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
                 active
                   ? 'bg-accent-soft font-semibold text-accent'
@@ -119,6 +147,20 @@ export function Sidebar({ isAdmin }: { isAdmin: boolean }) {
       </nav>
 
       <div className="border-t border-line-soft px-5 py-4">
+        <div className="mb-4 flex items-center justify-between gap-3 md:hidden">
+          <div className="min-w-0">
+            <p className="truncate text-xs font-medium text-ink">{username}</p>
+            <p className="text-[10px] text-ink-faint">Signed in</p>
+          </div>
+          <button
+            type="button"
+            onClick={signOut}
+            disabled={signingOut}
+            className="rounded-lg border border-line px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+          >
+            {signingOut ? '…' : 'Logout'}
+          </button>
+        </div>
         <p className="text-[10px] leading-relaxed text-ink-faint">
           One Panel.
           <br />

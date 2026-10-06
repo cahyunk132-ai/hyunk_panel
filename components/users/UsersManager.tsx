@@ -92,8 +92,8 @@ export function UsersManager({
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-line bg-base-850">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-xl border border-line bg-base-850">
+        <table className="w-full min-w-[560px] text-sm">
           <thead>
             <tr className="border-b border-line-soft text-left text-[11px] uppercase tracking-wide text-ink-faint">
               <th className="px-4 py-2.5">User</th>
@@ -144,7 +144,7 @@ export function UsersManager({
           <Field label="Email" required>
             <Input name="email" type="email" required autoComplete="off" />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Field label="Username" required>
               <Input name="username" required autoComplete="off" />
             </Field>

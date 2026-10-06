@@ -102,7 +102,7 @@ export function ResourceMonitor({
           </div>
         }
       />
-      <div className="grid gap-x-8 gap-y-5 px-5 py-5 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-x-8 gap-y-5 px-5 py-5 md:grid-cols-2">
         <Sparkline
           label="CPU"
           data={cpuData}

@@ -71,7 +71,7 @@ export function EditNodeModal({
         <Field label="Nama node" required>
           <Input name="name" defaultValue={node.name} required />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <Field label="FQDN" required>
             <Input name="fqdn" defaultValue={node.fqdn} required />
           </Field>
@@ -79,7 +79,7 @@ export function EditNodeModal({
             <Input name="port" type="number" defaultValue={node.port} required />
           </Field>
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Field label="Lokasi">
             <Input name="location" defaultValue={node.location} />
           </Field>
