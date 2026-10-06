@@ -1,10 +1,13 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Field, Textarea, Select } from '@/components/ui/Input';
+import { formatAllocation } from '@/lib/utils/allocations';
+import type { NodeAllocation } from '@/types';
 
 interface NodeOption {
   id: string;
@@ -41,7 +44,7 @@ export function NewServerForm({ nodes }: { nodes: NodeOption[] }) {
   const [form, setForm] = useState({
     name: '',
     node_id: nodes[0]?.id ?? '',
-    port: 25565,
+    allocation_id: '',
     memory_mb: 2048,
     cpu_limit: 100,
     disk_mb: 10240,
@@ -50,6 +53,42 @@ export function NewServerForm({ nodes }: { nodes: NodeOption[] }) {
     env: PRESETS[0].env,
     provision: false,
   });
+
+  const [allocationOptions, setAllocationOptions] = useState<NodeAllocation[]>([]);
+  const [allocationsLoading, setAllocationsLoading] = useState(false);
+  const [allocationsError, setAllocationsError] = useState<string | null>(null);
+
+  /** Ambil allocation yang masih bebas (`assigned_to IS NULL`) pada node terpilih. */
+  const loadAllocations = useCallback(async (nodeId: string) => {
+    if (!nodeId) {
+      setAllocationOptions([]);
+      return;
+    }
+    setAllocationsLoading(true);
+    setAllocationsError(null);
+    try {
+      const response = await fetch(`/api/nodes/${nodeId}/allocations?status=available`, { cache: 'no-store' });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(json.error || 'Gagal memuat daftar port node');
+      const options = Array.isArray(json.allocations) ? (json.allocations as NodeAllocation[]) : [];
+      setAllocationOptions(options);
+      // Pilih port pertama yang tersedia; pertahankan pilihan lama bila masih valid.
+      setForm((f) => ({
+        ...f,
+        allocation_id: options.some((option) => option.id === f.allocation_id) ? f.allocation_id : (options[0]?.id ?? ''),
+      }));
+    } catch (err) {
+      setAllocationOptions([]);
+      setAllocationsError(err instanceof Error ? err.message : 'Gagal memuat daftar port node');
+      setForm((f) => ({ ...f, allocation_id: '' }));
+    } finally {
+      setAllocationsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadAllocations(form.node_id);
+  }, [form.node_id, loadAllocations]);
 
   function applyPreset(idx: number) {
     const p = PRESETS[idx];
@@ -63,6 +102,9 @@ export function NewServerForm({ nodes }: { nodes: NodeOption[] }) {
     try {
       if (!Number.isFinite(Number(form.disk_mb)) || Number(form.disk_mb) < 1024) {
         throw new Error('Disk minimal 1024 MB');
+      }
+      if (!form.allocation_id) {
+        throw new Error('Pilih port (allocation) yang tersedia di node ini.');
       }
       const env: Record<string, string> = {};
       for (const rawLine of form.env.split('\n')) {
@@ -78,7 +120,7 @@ export function NewServerForm({ nodes }: { nodes: NodeOption[] }) {
         body: JSON.stringify({
           name: form.name,
           node_id: form.node_id,
-          port: Number(form.port),
+          allocation_id: form.allocation_id,
           memory_mb: Number(form.memory_mb),
           cpu_limit: Number(form.cpu_limit),
           disk_mb: Number(form.disk_mb) || 10240,
@@ -127,16 +169,27 @@ export function NewServerForm({ nodes }: { nodes: NodeOption[] }) {
           </Field>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Field label="Port primary" required>
-            <Input
-              type="number"
-              min={1}
-              max={65535}
-              value={form.port}
-              onChange={(e) => setForm((f) => ({ ...f, port: Number(e.target.value) }))}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Field label="Port (allocation)" hint="Hanya port yang belum dipakai server lain di node ini." required>
+            <Select
+              value={form.allocation_id}
+              onChange={(e) => setForm((f) => ({ ...f, allocation_id: e.target.value }))}
+              disabled={allocationsLoading || allocationOptions.length === 0}
               required
-            />
+            >
+              {allocationOptions.length === 0 ? (
+                <option value="">{allocationsLoading ? 'Memuat port…' : 'Tidak ada port tersedia'}</option>
+              ) : (
+                <>
+                  <option value="">Pilih port…</option>
+                  {allocationOptions.map((allocation) => (
+                    <option key={allocation.id} value={allocation.id}>
+                      {formatAllocation(allocation.ip, allocation.port)}
+                    </option>
+                  ))}
+                </>
+              )}
+            </Select>
           </Field>
           <Field label="Memory (MB)" required>
             <Input
@@ -168,6 +221,34 @@ export function NewServerForm({ nodes }: { nodes: NodeOption[] }) {
             />
           </Field>
         </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line-soft bg-base-800/60 px-3 py-2.5 text-[11px] text-ink-faint">
+          <span>
+            Port diambil dari daftar allocation node — setelah server dibuat, port otomatis ditandai terpakai dan tidak
+            bisa dipilih server lain.
+          </span>
+          <Link
+            href={`/nodes/${form.node_id}`}
+            className="shrink-0 font-medium text-accent transition-colors hover:text-accent-dim"
+          >
+            Kelola port di node →
+          </Link>
+        </div>
+
+        {allocationsError && (
+          <div className="rounded-lg border border-red-500/25 bg-red-500/5 px-3 py-2 text-xs text-red-300">
+            {allocationsError}
+          </div>
+        )}
+        {!allocationsLoading && !allocationsError && allocationOptions.length === 0 && (
+          <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-300">
+            Node ini belum punya port bebas.{' '}
+            <Link href={`/nodes/${form.node_id}`} className="font-medium underline">
+              Tambahkan range port di halaman node
+            </Link>{' '}
+            (contoh 25565-25600) sebelum membuat server.
+          </div>
+        )}
 
         <Field label="Preset (opsional)">
           <div className="flex flex-wrap gap-2">
@@ -238,7 +319,12 @@ export function NewServerForm({ nodes }: { nodes: NodeOption[] }) {
           <Button variant="secondary" type="button" onClick={() => router.back()}>
             Batal
           </Button>
-          <Button type="submit" loading={loading}>
+          <Button
+            type="submit"
+            loading={loading}
+            disabled={!form.allocation_id || allocationsLoading}
+            title={!form.allocation_id ? 'Pilih port (allocation) terlebih dahulu' : undefined}
+          >
             Buat server
           </Button>
         </div>
