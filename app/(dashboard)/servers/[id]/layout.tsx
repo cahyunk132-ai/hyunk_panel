@@ -58,7 +58,7 @@ export default async function ServerLayout({
         </Badge>
       </div>
 
-      <ServerTabs serverId={server.id} />
+      <ServerTabs serverId={server.id} showPlugins={server.image.toLowerCase().includes('java')} />
       <div className="min-h-0 flex-1">{children}</div>
     </div>
   );
