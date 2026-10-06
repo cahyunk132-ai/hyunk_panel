@@ -26,6 +26,7 @@ interface ConsoleTokenResponse {
  */
 export function useWingsConsole(serverId: string, enabled = true) {
   const [lines, setLines] = useState<string[]>([]);
+  const [needsEula, setNeedsEula] = useState(false);
   const [status, setStatus] = useState<string>('offline');
   const [stats, setStats] = useState<WingsStatsPayload | null>(null);
   const [connectionState, setConnectionState] = useState<ConsoleConnectionState>('disconnected');
@@ -105,15 +106,31 @@ export function useWingsConsole(serverId: string, enabled = true) {
           sendEvent('send stats');
           break;
         case 'console output':
+        case 'install output': {
+          (msg.args ?? []).forEach((line) => {
+            appendLine(line);
+            const lowerLine = line.toLowerCase();
+            if (
+              lowerLine.includes('you need to agree to the eula') ||
+              (lowerLine.includes('eula.txt') && lowerLine.includes('eula'))
+            ) {
+              setNeedsEula(true);
+            }
+          });
+          break;
+        }
         case 'daemon message':
-        case 'install output':
           (msg.args ?? []).forEach(appendLine);
           break;
         case 'daemon error':
           (msg.args ?? []).forEach((l) => appendLine(`\x1b[31m[daemon] ${l}\x1b[0m`));
           break;
         case 'status':
-          if (msg.args?.[0]) setStatus(msg.args[0]);
+          if (msg.args?.[0]) {
+            const nextStatus = msg.args[0];
+            setStatus(nextStatus);
+            if (nextStatus.toLowerCase() === 'running') setNeedsEula(false);
+          }
           break;
         case 'stats':
           if (msg.args?.[0]) {
@@ -192,6 +209,7 @@ export function useWingsConsole(serverId: string, enabled = true) {
 
   return {
     lines,
+    needsEula,
     status,
     stats,
     connectionState,
