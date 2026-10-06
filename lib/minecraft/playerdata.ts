@@ -410,8 +410,8 @@ async function mapLimit<T, R>(
 }
 
 /**
- * Resolve direktori playerdata: MC 1.21+ menyimpan .dat di `/{world}/players`,
- * versi lama di `/{world}/playerdata`. Coba `players` dulu; kalau listing
+ * Resolve direktori playerdata: versi baru menyimpan .dat di `/{world}/players/data`,
+ * versi lama di `/{world}/playerdata`. Coba `players/data` dulu; kalau listing
  * berhasil (array returned) pakai path itu, kalau gagal/throw fallback ke
  * `playerdata`.
  */
@@ -420,7 +420,7 @@ async function resolvePlayerdataDir(
   serverUuid: string,
   world: string,
 ): Promise<string> {
-  const modern = `/${world}/players`;
+  const modern = `/${world}/players/data`;
   try {
     const entries = await client.listFiles(serverUuid, modern);
     if (Array.isArray(entries)) return modern;
