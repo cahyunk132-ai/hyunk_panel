@@ -16,6 +16,29 @@
 import { parseNbt, type NbtCompound, type NbtValue } from './nbt';
 import type { WingsClient } from '@/lib/wings/client';
 import type { WingsFileStat } from '@/lib/wings/types';
+import type { ServerRow } from '@/types';
+
+// ─── Deteksi dukungan ───────────────────────────────────────────────────────
+
+/**
+ * Server yang tidak punya playerdata Java Edition yang bisa dibaca.
+ *
+ * Terdeteksi dari image (image `debian` dipakai egg Bedrock, mis.
+ * `ghcr.io/ptero-eggs/yolks:debian`) atau dari startup command (kolom
+ * `startup` maupun env `STARTUP`) yang menjalankan `bedrock_server`.
+ * Endpoint player mengembalikan `{ supported: false }` untuk server ini
+ * supaya UI menampilkan pesan info, bukan error.
+ */
+export function isBedrockServer(server: Pick<ServerRow, 'image' | 'startup' | 'env'>): boolean {
+  const image = (server.image ?? '').toLowerCase();
+  const startup = (server.startup ?? '').toLowerCase();
+  const envStartup = String(server.env?.STARTUP ?? '').toLowerCase();
+  return (
+    image.includes('debian') ||
+    startup.includes('bedrock_server') ||
+    envStartup.includes('bedrock_server')
+  );
+}
 
 // ─── Tipe data ──────────────────────────────────────────────────────────────
 
