@@ -15,7 +15,17 @@ export default async function PluginsPage({ params }: { params: { id: string } }
   const perms = await getEffectivePermissions(user, server);
   if (!permissionsInclude(perms, 'files.read')) notFound();
 
-  if (!server.image.toLowerCase().includes('java')) {
+  const imageLower = server.image.toLowerCase();
+
+  if (imageLower.includes('debian')) {
+    return (
+      <div className="rounded-xl border border-line bg-base-850 px-5 py-10 text-center">
+        <p className="text-sm text-ink-muted">Tidak didukung untuk Bedrock server</p>
+      </div>
+    );
+  }
+
+  if (!imageLower.includes('java')) {
     return (
       <div className="rounded-xl border border-line bg-base-850 px-5 py-10 text-center">
         <p className="text-sm text-ink-muted">Fitur ini hanya tersedia untuk Java Edition</p>
@@ -26,6 +36,9 @@ export default async function PluginsPage({ params }: { params: { id: string } }
   return (
     <PluginDownloader
       serverId={server.id}
+      serverImage={server.image}
+      startup={server.startup}
+      env={server.env}
       minecraftVersion={server.env?.MINECRAFT_VERSION?.trim() ?? ''}
       canInstall={permissionsInclude(perms, 'files.edit')}
     />

@@ -12,29 +12,126 @@ const MODRINTH_API = 'https://api.modrinth.com/v2';
 const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024;
 const USER_AGENT = 'HyunkPanel/0.1 (Modrinth mod & plugin installer)';
 
-interface InstallTarget {
-  /** Label untuk pesan error/UI. */
-  label: string;
-  /** Folder tujuan install di root server (dibuat otomatis bila belum ada). */
-  directory: string;
-  /** Loader yang relevan saat memfilter versi di Modrinth (kosong = tanpa filter loader). */
-  loaders: string[];
-  /** Ekstensi file yang diterima untuk tipe ini. */
-  extensions: string[];
-}
+type PluginLoader = 'paper' | 'purpur' | 'spigot' | 'bukkit';
+type ModLoader = 'fabric' | 'forge' | 'neoforge' | 'quilt';
+type ServerLoader = PluginLoader | ModLoader;
+type LoaderKind = 'plugin' | 'mod';
 
-/** Semua tipe project Modrinth yang didukung panel + lokasi installnya. */
-const INSTALL_TARGETS: Record<string, InstallTarget> = {
-  plugin: { label: 'plugin', directory: '/plugins', loaders: ['paper', 'purpur', 'spigot', 'bukkit'], extensions: ['.jar'] },
-  mod: { label: 'mod', directory: '/mods', loaders: ['fabric', 'forge', 'neoforge', 'quilt'], extensions: ['.jar'] },
-  resourcepack: { label: 'resource pack', directory: '/resourcepacks', loaders: [], extensions: ['.zip'] },
-  shader: { label: 'shader', directory: '/shaderpacks', loaders: [], extensions: ['.zip'] },
-  datapack: { label: 'datapack', directory: '/world/datapacks', loaders: [], extensions: ['.zip'] },
-};
+const PLUGIN_LOADERS: PluginLoader[] = ['paper', 'purpur', 'spigot', 'bukkit'];
+const MOD_LOADERS: ModLoader[] = ['fabric', 'forge', 'neoforge', 'quilt'];
+const ALL_LOADERS: ServerLoader[] = [...PLUGIN_LOADERS, ...MOD_LOADERS];
+
+/**
+ * Urutan deteksi loader dari env STARTUP atau SERVER_JARFILE.
+ * "neoforge" dicek sebelum "forge" karena string "neoforge" mengandung "forge".
+ */
+const LOADER_DETECTION_ORDER: ServerLoader[] = [
+  'paper',
+  'purpur',
+  'spigot',
+  'bukkit',
+  'neoforge',
+  'fabric',
+  'forge',
+  'quilt',
+];
+
+const SUPPORTED_PROJECT_TYPES = ['plugin', 'mod', 'resourcepack', 'shader', 'datapack'] as const;
 
 type ModrinthFile = { url?: string; filename?: string; primary?: boolean };
-type ModrinthVersion = { id?: string; files?: ModrinthFile[] };
+type ModrinthVersion = { id?: string; loaders?: string[]; files?: ModrinthFile[] };
 type ModrinthProject = { project_type?: string };
+
+function detectServerLoader(input: {
+  startup?: string | null;
+  env?: Record<string, string | undefined> | null;
+}): ServerLoader | null {
+  const sources = [
+    input.env?.STARTUP,
+    input.env?.SERVER_JARFILE,
+    input.startup,
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  for (const source of sources) {
+    const lower = source.toLowerCase();
+    for (const loader of LOADER_DETECTION_ORDER) {
+      if (lower.includes(loader)) {
+        return loader;
+      }
+    }
+  }
+  return null;
+}
+
+function getLoaderKind(loader: ServerLoader): LoaderKind {
+  return (PLUGIN_LOADERS as readonly string[]).includes(loader) ? 'plugin' : 'mod';
+}
+
+function isValidLoader(value: string): value is ServerLoader {
+  return (ALL_LOADERS as readonly string[]).includes(value);
+}
+
+/**
+ * Tentukan ekstensi yang diizinkan berdasarkan tipe project dan jenis loader server.
+ */
+function getAllowedExtensions(loaderKind: LoaderKind, projectType: string): string[] {
+  if (projectType === 'resourcepack' || projectType === 'shader') {
+    return ['.zip'];
+  }
+  if (projectType === 'datapack') {
+    return loaderKind === 'plugin' ? ['.zip', '.jar'] : ['.zip'];
+  }
+  return ['.jar'];
+}
+
+/**
+ * Logic folder tujuan berdasarkan loader/image server:
+ *
+ * Image mengandung "java" + loader Paper/Spigot/Bukkit/Purpur:
+ *   → semua file .jar → /plugins
+ *   → datapack → /world/datapacks
+ *   → resourcepack → /resourcepacks
+ *
+ * Image mengandung "java" + loader Fabric/Forge/NeoForge/Quilt:
+ *   → mod .jar → /mods
+ *   → resourcepack → /resourcepacks
+ *   → shader → /shaderpacks
+ */
+function resolveTargetByServerLoader(
+  loaderKind: LoaderKind,
+  projectType: string,
+  filename: string,
+): { directory: string; label: string } {
+  const isJar = filename.toLowerCase().endsWith('.jar');
+
+  if (loaderKind === 'plugin') {
+    if (isJar) {
+      return { directory: '/plugins', label: 'plugin' };
+    }
+    if (projectType === 'datapack') {
+      return { directory: '/world/datapacks', label: 'datapack' };
+    }
+    if (projectType === 'resourcepack') {
+      return { directory: '/resourcepacks', label: 'resource pack' };
+    }
+    return { directory: '/plugins', label: 'plugin' };
+  }
+
+  // loaderKind === 'mod' (Fabric / Forge / NeoForge / Quilt)
+  if (isJar) {
+    return { directory: '/mods', label: 'mod' };
+  }
+  if (projectType === 'resourcepack') {
+    return { directory: '/resourcepacks', label: 'resource pack' };
+  }
+  if (projectType === 'shader') {
+    return { directory: '/shaderpacks', label: 'shader' };
+  }
+  if (projectType === 'datapack') {
+    return { directory: '/world/datapacks', label: 'datapack' };
+  }
+  return { directory: '/mods', label: 'mod' };
+}
 
 function safeFilename(value: string, allowedExtensions: string[]): string | null {
   const name = value.replace(/[\\/\0]/g, '_').replace(/[^A-Za-z0-9._ -]/g, '_').trim();
@@ -58,6 +155,33 @@ async function modrinthJson<T>(url: URL): Promise<T> {
     );
   }
   return (await response.json()) as T;
+}
+
+async function fetchModrinthVersions(
+  projectId: string,
+  mcVersion: string,
+  versionLoaders: string[],
+): Promise<ModrinthVersion[]> {
+  const buildUrl = (includeMcVersion: boolean, includeLoaders: boolean) => {
+    const url = new URL(`${MODRINTH_API}/project/${encodeURIComponent(projectId)}/version`);
+    if (includeMcVersion && mcVersion && mcVersion.toLowerCase() !== 'latest') {
+      url.searchParams.set('game_versions', JSON.stringify([mcVersion]));
+    }
+    if (includeLoaders && versionLoaders.length > 0) {
+      url.searchParams.set('loaders', JSON.stringify(versionLoaders));
+    }
+    return url;
+  };
+
+  const hasSpecificMcVersion = Boolean(mcVersion && mcVersion.toLowerCase() !== 'latest');
+  const hasLoaders = versionLoaders.length > 0;
+
+  let versions = await modrinthJson<ModrinthVersion[]>(buildUrl(hasSpecificMcVersion, hasLoaders));
+  if ((!Array.isArray(versions) || versions.length === 0) && hasSpecificMcVersion) {
+    // Fallback tanpa filter game_versions bila versi MC server tidak terdaftar persis di Modrinth.
+    versions = await modrinthJson<ModrinthVersion[]>(buildUrl(false, hasLoaders));
+  }
+  return Array.isArray(versions) ? versions : [];
 }
 
 /**
@@ -149,7 +273,15 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   const checked = await checkPermission(user, 'files.edit', params.id);
   if (checked instanceof Response) return checked;
-  if (!checked.server.image.toLowerCase().includes('java')) {
+
+  const imageLower = checked.server.image.toLowerCase();
+  if (imageLower.includes('debian')) {
+    return Response.json(
+      { error: 'Tidak didukung untuk Bedrock server' },
+      { status: 400 },
+    );
+  }
+  if (!imageLower.includes('java')) {
     return Response.json(
       { error: 'Download konten Modrinth hanya didukung untuk server Java Edition' },
       { status: 400 },
@@ -185,16 +317,42 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   const requestedVersionId = typeof body?.version_id === 'string' ? body.version_id.trim() : '';
   const requestedType = typeof body?.project_type === 'string' ? body.project_type.trim().toLowerCase() : '';
-  if (requestedType && !INSTALL_TARGETS[requestedType]) {
+  if (requestedType && !(SUPPORTED_PROJECT_TYPES as readonly string[]).includes(requestedType)) {
     return Response.json(
       {
-        error: `Tipe project "${requestedType}" tidak didukung. Tipe yang didukung: ${Object.keys(INSTALL_TARGETS).join(', ')}. Modpack belum bisa di-install dari panel.`,
+        error: `Tipe project "${requestedType}" tidak didukung. Tipe yang didukung: ${SUPPORTED_PROJECT_TYPES.join(', ')}. Modpack belum bisa di-install dari panel.`,
       },
       { status: 400 },
     );
   }
 
-  const requestedLoader = typeof body?.loader === 'string' ? body.loader.trim().toLowerCase() : '';
+  const requestedLoaderRaw = typeof body?.loader === 'string' ? body.loader.trim().toLowerCase() : '';
+  if (requestedLoaderRaw && !isValidLoader(requestedLoaderRaw)) {
+    return Response.json(
+      {
+        error: `Loader "${requestedLoaderRaw}" tidak didukung. Loader yang valid: ${ALL_LOADERS.join(', ')}`,
+      },
+      { status: 400 },
+    );
+  }
+
+  const detectedLoader = detectServerLoader({
+    startup: checked.server.startup,
+    env: checked.server.env,
+  });
+  const serverLoader: ServerLoader | null =
+    detectedLoader ?? (requestedLoaderRaw && isValidLoader(requestedLoaderRaw) ? requestedLoaderRaw : null);
+
+  if (!serverLoader) {
+    return Response.json(
+      {
+        error: 'Loader server tidak diketahui. Silakan pilih loader terlebih dahulu sebelum install.',
+      },
+      { status: 400 },
+    );
+  }
+
+  const loaderKind = getLoaderKind(serverLoader);
 
   const resolved = await resolveServerWings(checked.server);
   if (resolved instanceof Response) return resolved;
@@ -205,84 +363,71 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const projectUrl = new URL(`${MODRINTH_API}/project/${encodeURIComponent(projectId)}`);
     const project = await modrinthJson<ModrinthProject>(projectUrl);
 
-    // Tipe asli dari Modrinth adalah sumber kebenaran; tipe dari client hanya
-    // dipakai sebagai fallback bila API tidak mengembalikannya.
-    const actualType = typeof project.project_type === 'string' ? project.project_type : '';
+    const actualType = typeof project.project_type === 'string' ? project.project_type.toLowerCase() : '';
     const projectType = actualType || requestedType;
-    const target = projectType ? INSTALL_TARGETS[projectType] : undefined;
-    if (!target) {
+    if (!projectType || !(SUPPORTED_PROJECT_TYPES as readonly string[]).includes(projectType)) {
       return Response.json(
         {
-          error: `Project Modrinth ini bertipe "${projectType || 'tidak diketahui'}" dan belum bisa di-install dari panel. Tipe yang didukung: ${Object.keys(INSTALL_TARGETS).join(', ')}.`,
-        },
-        { status: 400 },
-      );
-    }
-    if (requestedType && requestedType !== projectType) {
-      return Response.json(
-        {
-          error: `Tipe project tidak sesuai: request meminta "${requestedType}" tetapi project Modrinth ini adalah ${target.label}. Silakan install sesuai tipe aslinya.`,
+          error: `Project Modrinth ini bertipe "${projectType || 'tidak diketahui'}" dan belum bisa di-install dari panel. Tipe yang didukung: ${SUPPORTED_PROJECT_TYPES.join(', ')}.`,
         },
         { status: 400 },
       );
     }
 
-    // Filter loader versi: hanya plugin & mod yang punya loader di Modrinth.
-    let versionLoaders: string[] = target.loaders;
-    if (requestedLoader) {
-      if (!target.loaders.includes(requestedLoader)) {
-        return Response.json(
-          {
-            error: target.loaders.length === 0
-              ? `Tipe project ${target.label} tidak memakai loader, jadi filter loader "${requestedLoader}" tidak berlaku`
-              : `Loader "${requestedLoader}" tidak valid untuk ${target.label}. Loader yang didukung: ${target.loaders.join(', ')}`,
-          },
-          { status: 400 },
-        );
-      }
-      versionLoaders = [requestedLoader];
+    if (loaderKind === 'plugin' && projectType === 'shader') {
+      return Response.json(
+        { error: 'Shader tidak didukung untuk plugin server (Paper/Spigot/Bukkit/Purpur).' },
+        { status: 400 },
+      );
     }
 
-    const versionsUrl = new URL(`${MODRINTH_API}/project/${encodeURIComponent(projectId)}/version`);
-    if (mcVersion && mcVersion.toLowerCase() !== 'latest') {
-      versionsUrl.searchParams.set('game_versions', JSON.stringify([mcVersion]));
-    }
-    if (versionLoaders.length > 0) {
-      versionsUrl.searchParams.set('loaders', JSON.stringify(versionLoaders));
-    }
+    const isJarProject = projectType === 'plugin' || projectType === 'mod';
+    const versionLoaders: string[] = isJarProject
+      ? loaderKind === 'plugin'
+        ? [...PLUGIN_LOADERS]
+        : [serverLoader]
+      : [];
 
-    const versions = await modrinthJson<ModrinthVersion[]>(versionsUrl);
-    if (!Array.isArray(versions) || versions.length === 0) {
-      const loaderNote = versionLoaders.length > 0 ? ` dan loader ${versionLoaders.join('/')}` : '';
+    const versions = await fetchModrinthVersions(projectId, mcVersion, versionLoaders);
+    if (versions.length === 0) {
+      const loaderLabel = versionLoaders.length > 0 ? ` untuk loader ${serverLoader}` : '';
       return Response.json(
         {
-          error:
-            mcVersion && mcVersion.toLowerCase() !== 'latest'
-              ? `Tidak ada versi ${target.label} yang kompatibel dengan Minecraft ${mcVersion}${loaderNote}`
-              : `Tidak ada versi ${target.label} yang kompatibel${loaderNote}`,
+          error: `Tidak ada versi yang kompatibel${loaderLabel} di Modrinth`,
         },
         { status: 404 },
       );
     }
 
-    // Gunakan versi pilihan bila memang kompatibel; jika tidak, ambil versi kompatibel terbaru.
-    const version = versions.find((item) => item.id === requestedVersionId) ?? versions[0];
+    // Prioritaskan requestedVersionId bila cocok, lalu versi yang secara eksplisit memuat serverLoader, lalu versi terbaru.
+    const version =
+      versions.find((item) => item.id === requestedVersionId) ??
+      versions.find((item) =>
+        Array.isArray(item.loaders) &&
+        item.loaders.some((loader) => loader.toLowerCase() === serverLoader),
+      ) ??
+      versions[0];
+
+    const allowedExtensions = getAllowedExtensions(loaderKind, projectType);
     const files = Array.isArray(version.files) ? version.files : [];
     const hasAllowedExtension = (filename?: string) => {
       const lower = (filename ?? '').toLowerCase();
-      return target.extensions.some((ext) => lower.endsWith(ext));
+      return allowedExtensions.some((ext) => lower.endsWith(ext));
     };
-    const file = files.find((item) => item.primary && hasAllowedExtension(item.filename))
-      ?? files.find((item) => hasAllowedExtension(item.filename));
-    const filename = file?.filename ? safeFilename(file.filename, target.extensions) : null;
+    const file =
+      files.find((item) => item.primary && hasAllowedExtension(item.filename)) ??
+      files.find((item) => hasAllowedExtension(item.filename));
+    const filename = file?.filename ? safeFilename(file.filename, allowedExtensions) : null;
     if (!file?.url || !filename) {
       return Response.json(
         {
-          error: `Versi Modrinth ini tidak memiliki file ${target.extensions.join('/')} yang valid untuk ${target.label}`,
+          error: `Versi Modrinth ini tidak memiliki file ${allowedExtensions.join('/')} yang valid`,
         },
         { status: 422 },
       );
     }
+
+    const target = resolveTargetByServerLoader(loaderKind, projectType, filename);
 
     let fileUrl: URL;
     try {
@@ -360,6 +505,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         filename,
         directory: target.directory,
         project_type: projectType,
+        loader: serverLoader,
         version_id: version.id ?? null,
       });
     } finally {

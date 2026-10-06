@@ -21,12 +21,58 @@ type SearchResponse = { hits?: ModrinthProject[]; total_hits?: number };
 type InstallState = { status: 'installing' | 'success' | 'error'; message: string };
 
 type CategoryKey = 'all' | 'plugin' | 'mod' | 'resourcepack' | 'shader' | 'datapack';
-type ModLoader = 'fabric' | 'forge' | 'neoforge' | 'quilt';
+export type PluginLoader = 'paper' | 'purpur' | 'spigot' | 'bukkit';
+export type ModLoader = 'fabric' | 'forge' | 'neoforge' | 'quilt';
+export type ServerLoader = PluginLoader | ModLoader;
+export type LoaderKind = 'plugin' | 'mod';
 
 const MODRINTH_API = 'https://api.modrinth.com/v2';
 const numberFormat = new Intl.NumberFormat('id-ID', { notation: 'compact', maximumFractionDigits: 1 });
 
-const CATEGORIES: { key: CategoryKey; label: string }[] = [
+const PLUGIN_LOADERS: PluginLoader[] = ['paper', 'purpur', 'spigot', 'bukkit'];
+const MOD_LOADERS: ModLoader[] = ['fabric', 'forge', 'neoforge', 'quilt'];
+
+/**
+ * Urutan deteksi loader dari env STARTUP atau SERVER_JARFILE.
+ * "neoforge" dicek sebelum "forge" karena string "neoforge" mengandung "forge".
+ */
+const LOADER_DETECTION_ORDER: ServerLoader[] = [
+  'paper',
+  'purpur',
+  'spigot',
+  'bukkit',
+  'neoforge',
+  'fabric',
+  'forge',
+  'quilt',
+];
+
+const LOADER_LABELS: Record<ServerLoader, string> = {
+  paper: 'Paper',
+  purpur: 'Purpur',
+  spigot: 'Spigot',
+  bukkit: 'Bukkit',
+  fabric: 'Fabric',
+  forge: 'Forge',
+  neoforge: 'NeoForge',
+  quilt: 'Quilt',
+};
+
+const PLUGIN_SERVER_CATEGORIES: { key: CategoryKey; label: string }[] = [
+  { key: 'all', label: 'Semua' },
+  { key: 'plugin', label: 'Plugin' },
+  { key: 'datapack', label: 'Datapack' },
+  { key: 'resourcepack', label: 'Resourcepack' },
+];
+
+const MOD_SERVER_CATEGORIES: { key: CategoryKey; label: string }[] = [
+  { key: 'all', label: 'Semua' },
+  { key: 'mod', label: 'Mod' },
+  { key: 'resourcepack', label: 'Resourcepack' },
+  { key: 'shader', label: 'Shader' },
+];
+
+const ALL_CATEGORIES: { key: CategoryKey; label: string }[] = [
   { key: 'all', label: 'Semua' },
   { key: 'plugin', label: 'Plugin' },
   { key: 'mod', label: 'Mod' },
@@ -34,20 +80,6 @@ const CATEGORIES: { key: CategoryKey; label: string }[] = [
   { key: 'shader', label: 'Shader' },
   { key: 'datapack', label: 'Datapack' },
 ];
-
-const MOD_LOADER_OPTIONS: { value: ModLoader | 'all'; label: string }[] = [
-  { value: 'all', label: 'Semua loader' },
-  { value: 'fabric', label: 'Fabric' },
-  { value: 'forge', label: 'Forge' },
-  { value: 'neoforge', label: 'NeoForge' },
-  { value: 'quilt', label: 'Quilt' },
-];
-
-/**
- * Tipe yang bisa di-install dari panel. "Semua" dibatasi ke tipe-tipe ini
- * supaya hasil pencarian tidak menampilkan modpack yang tidak bisa di-install.
- */
-const INSTALLABLE_TYPES: Exclude<CategoryKey, 'all'>[] = ['plugin', 'mod', 'resourcepack', 'shader', 'datapack'];
 
 const TYPE_META: Record<string, { label: string; tone: 'accent' | 'green' | 'yellow' | 'red' | 'gray' | 'default'; icon: string; needsRestart: boolean }> = {
   plugin: { label: 'Plugin', tone: 'accent', icon: '🧩', needsRestart: true },
@@ -58,27 +90,84 @@ const TYPE_META: Record<string, { label: string; tone: 'accent' | 'green' | 'yel
   modpack: { label: 'Modpack', tone: 'default', icon: '🗃️', needsRestart: true },
 };
 
-function buildFacets(category: CategoryKey, loader: ModLoader | 'all'): string[][] {
-  if (category === 'all') {
-    return [INSTALLABLE_TYPES.map((type) => `project_type:${type}`)];
+export function detectServerLoader(input: {
+  startup?: string | null;
+  env?: Record<string, string | undefined> | null;
+}): ServerLoader | null {
+  const sources = [
+    input.env?.STARTUP,
+    input.env?.SERVER_JARFILE,
+    input.startup,
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  for (const source of sources) {
+    const lower = source.toLowerCase();
+    for (const loader of LOADER_DETECTION_ORDER) {
+      if (lower.includes(loader)) {
+        return loader;
+      }
+    }
   }
-  const facets: string[][] = [[`project_type:${category}`]];
-  if (category === 'mod' && loader !== 'all') facets.push([`loaders:${loader}`]);
-  return facets;
+  return null;
+}
+
+export function getLoaderKind(loader: ServerLoader): LoaderKind {
+  return (PLUGIN_LOADERS as readonly string[]).includes(loader) ? 'plugin' : 'mod';
+}
+
+function getCategoriesForLoader(kind: LoaderKind | null): { key: CategoryKey; label: string }[] {
+  if (kind === 'plugin') return PLUGIN_SERVER_CATEGORIES;
+  if (kind === 'mod') return MOD_SERVER_CATEGORIES;
+  return ALL_CATEGORIES;
+}
+
+/**
+ * Bangun facets Modrinth otomatis sesuai loader server yang terdeteksi/dipilih.
+ * Di API search Modrinth v2, filter loader menggunakan facet `categories:<loader>`.
+ */
+function buildFacets(category: CategoryKey, loader: ServerLoader): string[][] {
+  const kind = getLoaderKind(loader);
+
+  if (category === 'resourcepack') {
+    return [['project_type:resourcepack']];
+  }
+  if (category === 'datapack') {
+    return [['project_type:datapack']];
+  }
+  if (category === 'shader') {
+    return [['project_type:shader']];
+  }
+
+  if (kind === 'plugin') {
+    // Project plugin di Modrinth sering bertipe "mod" maupun "plugin" dengan kategori loader paper/spigot/bukkit/purpur.
+    return [['project_type:plugin', 'project_type:mod'], [`categories:${loader}`]];
+  }
+
+  return [['project_type:mod'], [`categories:${loader}`]];
 }
 
 export function PluginDownloader({
   serverId,
+  serverImage = 'java',
+  startup = '',
+  env = {},
   minecraftVersion,
   canInstall,
 }: {
   serverId: string;
+  serverImage?: string;
+  startup?: string;
+  env?: Record<string, string>;
   minecraftVersion: string;
   canInstall: boolean;
 }) {
+  const detectedLoader = detectServerLoader({ startup, env });
+  const [selectedLoader, setSelectedLoader] = useState<ServerLoader | ''>('');
+  const activeLoader: ServerLoader | null = detectedLoader ?? (selectedLoader || null);
+  const loaderKind: LoaderKind | null = activeLoader ? getLoaderKind(activeLoader) : null;
+
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<CategoryKey>('all');
-  const [modLoader, setModLoader] = useState<ModLoader | 'all'>('all');
   const [hits, setHits] = useState<ModrinthProject[]>([]);
   const [searched, setSearched] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -89,7 +178,24 @@ export function PluginDownloader({
 
   useEffect(() => () => requestRef.current?.abort(), []);
 
-  async function runSearch(opts: { query: string; category: CategoryKey; loader: ModLoader | 'all' }) {
+  const imageLower = serverImage.toLowerCase();
+  if (imageLower.includes('debian')) {
+    return (
+      <div className="rounded-xl border border-line bg-base-850 px-5 py-10 text-center">
+        <p className="text-sm text-ink-muted">Tidak didukung untuk Bedrock server</p>
+      </div>
+    );
+  }
+
+  if (!imageLower.includes('java')) {
+    return (
+      <div className="rounded-xl border border-line bg-base-850 px-5 py-10 text-center">
+        <p className="text-sm text-ink-muted">Fitur ini hanya tersedia untuk Java Edition</p>
+      </div>
+    );
+  }
+
+  async function runSearch(opts: { query: string; category: CategoryKey; loader: ServerLoader }) {
     requestRef.current?.abort();
     const controller = new AbortController();
     requestRef.current = controller;
@@ -116,21 +222,52 @@ export function PluginDownloader({
 
   function search(event?: FormEvent) {
     event?.preventDefault();
-    void runSearch({ query, category, loader: modLoader });
+    if (!activeLoader) {
+      setSearchError('Pilih loader server terlebih dahulu sebelum mencari.');
+      return;
+    }
+    void runSearch({ query, category, loader: activeLoader });
   }
 
   function selectCategory(next: CategoryKey) {
     setCategory(next);
-    if (searched) void runSearch({ query, category: next, loader: modLoader });
+    if (searched && activeLoader) {
+      void runSearch({ query, category: next, loader: activeLoader });
+    }
   }
 
-  function selectLoader(next: ModLoader | 'all') {
-    setModLoader(next);
-    if (searched) void runSearch({ query, category, loader: next });
+  function handleSelectLoader(next: ServerLoader | '') {
+    setSelectedLoader(next);
+    setSearchError('');
+    if (!next) {
+      setHits([]);
+      setSearched(false);
+      return;
+    }
+    const nextKind = getLoaderKind(next);
+    const allowedCategories = getCategoriesForLoader(nextKind).map((item) => item.key);
+    const nextCategory = allowedCategories.includes(category) ? category : 'all';
+    if (nextCategory !== category) {
+      setCategory(nextCategory);
+    }
+    if (searched) {
+      void runSearch({ query, category: nextCategory, loader: next });
+    }
   }
 
   async function install(project: ModrinthProject) {
     if (installingProject) return;
+    if (!activeLoader) {
+      setInstallStates((current) => ({
+        ...current,
+        [project.project_id]: {
+          status: 'error',
+          message: 'Pilih loader server terlebih dahulu sebelum install.',
+        },
+      }));
+      return;
+    }
+
     setInstallingProject(project.project_id);
     setInstallStates((current) => ({
       ...current,
@@ -149,8 +286,7 @@ export function PluginDownloader({
           project_id: project.project_id,
           version_id: project.latest_version ?? '',
           project_type: projectType,
-          // Loader pilihan user diteruskan supaya versi yang dipasang sesuai.
-          ...(projectType === 'mod' && modLoader !== 'all' ? { loader: modLoader } : {}),
+          loader: activeLoader,
         }),
       });
       const data = (await response.json().catch(() => ({}))) as {
@@ -163,9 +299,11 @@ export function PluginDownloader({
           data.error || `Install gagal (HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''})`,
         );
       }
+      const isJar = (data.filename ?? '').toLowerCase().endsWith('.jar');
       const typeMeta = projectType ? TYPE_META[projectType] : undefined;
       const target = data.directory ? ` ke ${data.directory}` : '';
-      const restartNote = typeMeta?.needsRestart ? ' Restart server untuk mengaktifkan.' : '';
+      const needsRestart = isJar || typeMeta?.needsRestart;
+      const restartNote = needsRestart ? ' Restart server untuk mengaktifkan.' : '';
       setInstallStates((current) => ({
         ...current,
         [project.project_id]: {
@@ -186,16 +324,20 @@ export function PluginDownloader({
     }
   }
 
+  const availableCategories = getCategoriesForLoader(loaderKind);
+
   return (
     <section className="space-y-5">
       <div>
         <h2 className="text-xl font-bold">Mod &amp; Plugin Downloader</h2>
         <p className="mt-1 text-sm text-ink-muted">
-          Cari dan pasang konten dari Modrinth. Folder tujuan dibuat otomatis: plugin ke{' '}
-          <code className="text-accent">/plugins</code>, mod ke <code className="text-accent">/mods</code>,
-          resourcepack ke <code className="text-accent">/resourcepacks</code>, shader ke{' '}
-          <code className="text-accent">/shaderpacks</code>, datapack ke{' '}
-          <code className="text-accent">/world/datapacks</code>.
+          Cari dan pasang konten dari Modrinth. Folder tujuan disesuaikan berdasarkan loader server:{' '}
+          plugin server (<code className="text-accent">/plugins</code>,{' '}
+          <code className="text-accent">/world/datapacks</code>,{' '}
+          <code className="text-accent">/resourcepacks</code>) atau mod server (
+          <code className="text-accent">/mods</code>,{' '}
+          <code className="text-accent">/resourcepacks</code>,{' '}
+          <code className="text-accent">/shaderpacks</code>).
         </p>
       </div>
 
@@ -206,23 +348,97 @@ export function PluginDownloader({
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Cari di Modrinth, misalnya EssentialsX, Sodium, atau Complementary Shaders"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-base-850 px-3 py-2.5 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-accent"
+          disabled={!activeLoader}
+          placeholder={
+            activeLoader
+              ? 'Cari di Modrinth, misalnya EssentialsX, Sodium, atau Complementary Shaders'
+              : 'Pilih loader server terlebih dahulu sebelum mencari...'
+          }
+          className="min-w-0 flex-1 rounded-lg border border-line bg-base-850 px-3 py-2.5 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
         />
-        <Button type="submit" loading={searching}>Cari</Button>
+        <Button type="submit" loading={searching} disabled={!activeLoader}>
+          Cari
+        </Button>
       </form>
+
+      {/* Badge loader terdeteksi / dropdown pilih loader jika tidak diketahui */}
+      <div className="flex flex-wrap items-center gap-2.5">
+        {detectedLoader ? (
+          <Badge tone="accent">Loader terdeteksi: {LOADER_LABELS[detectedLoader]}</Badge>
+        ) : (
+          <>
+            <Badge tone={activeLoader ? 'accent' : 'yellow'}>
+              {activeLoader
+                ? `Loader terdeteksi: ${LOADER_LABELS[activeLoader]}`
+                : 'Loader terdeteksi: Tidak diketahui'}
+            </Badge>
+            <div className="flex flex-wrap items-center gap-2">
+              <label htmlFor="server-loader-select" className="text-xs text-ink-muted">
+                Pilih loader:
+              </label>
+              <select
+                id="server-loader-select"
+                value={selectedLoader}
+                onChange={(event) => handleSelectLoader(event.target.value as ServerLoader | '')}
+                aria-label="Pilih loader server"
+                className="rounded-lg border border-line bg-base-850 px-2.5 py-1.5 text-xs text-ink outline-none focus:border-accent"
+              >
+                <option value="">-- Pilih loader dulu --</option>
+                <optgroup label="Plugin Server (/plugins)">
+                  {PLUGIN_LOADERS.map((loader) => (
+                    <option key={loader} value={loader}>
+                      {LOADER_LABELS[loader]}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Mod Server (/mods)">
+                  {MOD_LOADERS.map((loader) => (
+                    <option key={loader} value={loader}>
+                      {LOADER_LABELS[loader]}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+          </>
+        )}
+
+        {loaderKind === 'plugin' && (
+          <span className="text-xs text-ink-faint">
+            Target: <code className="text-ink-muted">.jar → /plugins/</code> ·{' '}
+            <code className="text-ink-muted">datapack → /world/datapacks/</code> ·{' '}
+            <code className="text-ink-muted">resourcepack → /resourcepacks/</code>
+          </span>
+        )}
+        {loaderKind === 'mod' && (
+          <span className="text-xs text-ink-faint">
+            Target: <code className="text-ink-muted">mod .jar → /mods/</code> ·{' '}
+            <code className="text-ink-muted">resourcepack → /resourcepacks/</code> ·{' '}
+            <code className="text-ink-muted">shader → /shaderpacks/</code>
+          </span>
+        )}
+      </div>
+
+      {!activeLoader && (
+        <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-300">
+          Loader server tidak dapat dideteksi otomatis dari <code className="font-mono">STARTUP</code> atau{' '}
+          <code className="font-mono">SERVER_JARFILE</code>. Silakan pilih loader pada dropdown di atas terlebih dahulu
+          sebelum mencari atau meng-install konten.
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter kategori konten">
-          {CATEGORIES.map((item) => {
+          {availableCategories.map((item) => {
             const active = category === item.key;
             return (
               <button
                 key={item.key}
                 type="button"
                 aria-pressed={active}
+                disabled={!activeLoader}
                 onClick={() => selectCategory(item.key)}
-                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                   active
                     ? 'border-accent/60 bg-accent/10 text-accent'
                     : 'border-line bg-base-850 text-ink-muted hover:border-accent/40 hover:text-ink'
@@ -233,21 +449,6 @@ export function PluginDownloader({
             );
           })}
         </div>
-
-        {category === 'mod' && (
-          <select
-            value={modLoader}
-            onChange={(event) => selectLoader(event.target.value as ModLoader | 'all')}
-            aria-label="Filter loader mod"
-            className="rounded-lg border border-line bg-base-850 px-2.5 py-1.5 text-xs text-ink outline-none focus:border-accent"
-          >
-            {MOD_LOADER_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs text-ink-faint">
@@ -269,7 +470,7 @@ export function PluginDownloader({
 
       {searched && !searching && !searchError && hits.length === 0 && (
         <div className="rounded-xl border border-line bg-base-850 px-4 py-8 text-center text-sm text-ink-muted">
-          Tidak ada hasil yang cocok. Coba kata kunci atau kategori lain.
+          Tidak ada hasil yang cocok untuk loader {activeLoader ? LOADER_LABELS[activeLoader] : ''}. Coba kata kunci atau kategori lain.
         </div>
       )}
 
@@ -277,7 +478,11 @@ export function PluginDownloader({
         <div className="grid gap-3 lg:grid-cols-2">
           {hits.map((project) => {
             const state = installStates[project.project_id];
-            const typeMeta = project.project_type ? TYPE_META[project.project_type] : undefined;
+            const displayType =
+              loaderKind === 'plugin' && (project.project_type === 'mod' || project.project_type === 'plugin')
+                ? 'plugin'
+                : project.project_type;
+            const typeMeta = displayType ? TYPE_META[displayType] : undefined;
             return (
               <article key={project.project_id} className="flex min-w-0 gap-3 rounded-xl border border-line bg-base-850 p-4">
                 <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-base-700">
@@ -303,7 +508,7 @@ export function PluginDownloader({
                     <Button
                       size="sm"
                       onClick={() => install(project)}
-                      disabled={Boolean(installingProject) || !canInstall}
+                      disabled={Boolean(installingProject) || !canInstall || !activeLoader}
                       loading={installingProject === project.project_id}
                     >
                       Install
