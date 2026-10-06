@@ -84,6 +84,12 @@ export async function POST(request: NextRequest) {
   const node = await getNodeById(body.node_id);
   if (!node) return Response.json({ error: 'Node tidak ditemukan' }, { status: 404 });
 
+  // Disk limit: default 10240 MB (10 GB) bila tidak diisi, minimal 1024 MB.
+  const diskMb = body.disk_mb ?? 10240;
+  if (!Number.isFinite(diskMb) || diskMb < 1024) {
+    return Response.json({ error: 'disk_mb minimal 1024 MB' }, { status: 400 });
+  }
+
   const serverUuid = body.uuid ?? crypto.randomUUID();
   const service = getSupabaseServiceClient();
 
@@ -111,7 +117,7 @@ export async function POST(request: NextRequest) {
       allocation_id: alloc.id,
       memory_mb: body.memory_mb,
       cpu_limit: body.cpu_limit,
-      disk_mb: body.disk_mb ?? null,
+      disk_mb: diskMb,
       image: body.image,
       startup: body.startup,
       env: body.env ?? {},

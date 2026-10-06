@@ -20,6 +20,7 @@ export function ServerSettings({
     name: server.name,
     memory_mb: server.memory_mb,
     cpu_limit: server.cpu_limit,
+    disk_mb: server.disk_mb ?? 10240,
     startup: server.startup,
     image: server.image,
     envText: Object.entries(server.env ?? {})
@@ -56,6 +57,10 @@ export function ServerSettings({
   async function save() {
     const env = parseEnv();
     if (!env) return;
+    if (!Number.isFinite(Number(form.disk_mb)) || Number(form.disk_mb) < 1024) {
+      setError('Disk minimal 1024 MB');
+      return;
+    }
     setSaving(true);
     setMessage(null);
     setError(null);
@@ -67,6 +72,7 @@ export function ServerSettings({
           name: form.name,
           memory_mb: Number(form.memory_mb),
           cpu_limit: Number(form.cpu_limit),
+          disk_mb: Number(form.disk_mb),
           startup: form.startup,
           image: form.image,
           env,
@@ -135,7 +141,7 @@ export function ServerSettings({
               <Input value={form.image} onChange={(e) => set('image', e.target.value)} className="font-mono text-xs" />
             </Field>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-3">
             <Field label="Memory (MB)" required>
               <Input
                 type="number"
@@ -151,6 +157,15 @@ export function ServerSettings({
                 step={25}
                 value={form.cpu_limit}
                 onChange={(e) => set('cpu_limit', Number(e.target.value))}
+              />
+            </Field>
+            <Field label="Disk (MB)" hint="Min. 1024 MB" required>
+              <Input
+                type="number"
+                min={1024}
+                step={512}
+                value={form.disk_mb}
+                onChange={(e) => set('disk_mb', Number(e.target.value))}
               />
             </Field>
           </div>

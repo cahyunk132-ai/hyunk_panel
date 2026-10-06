@@ -35,6 +35,17 @@ export default async function ServerLayout({
 
   const canEditFiles = permissionsInclude(perms, 'files.edit');
 
+  // Allocation menyimpan 0.0.0.0 (wildcard listen) — tampilkan FQDN node agar
+  // player bisa connect langsung. Fallback ke IP allocation bila node tak ada.
+  const allocIp = allocation?.ip as string | undefined;
+  const allocPort = allocation?.port as number | undefined;
+  const displayHost =
+    allocIp && allocIp !== '0.0.0.0'
+      ? allocIp
+      : ((node?.fqdn as string | undefined) ?? allocIp);
+  const address =
+    displayHost && allocPort !== undefined ? `${displayHost}:${allocPort}` : null;
+
   return (
     <div className="flex h-full flex-col space-y-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -50,7 +61,7 @@ export default async function ServerLayout({
           <p className="mt-0.5 truncate font-mono text-[11px] text-ink-faint">
             {server.uuid}
             {node && ` · ${node.name as string}`}
-            {allocation && ` · ${allocation.ip as string}:${allocation.port as number}`}
+            {address && ` · ${address}`}
           </p>
         </div>
         <Badge tone={canEditFiles ? 'default' : 'gray'}>

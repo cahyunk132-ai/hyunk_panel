@@ -13,6 +13,8 @@ export interface StatsSample {
   uptime: number;
   rx_per_sec: number; // bytes/detik (rate dari delta antar sampel)
   tx_per_sec: number;
+  rx_bytes: number; // total kumulatif dari wings
+  tx_bytes: number;
 }
 
 const MAX_SAMPLES = 120; // ~2 menit pada 1 sampel/detik
@@ -126,6 +128,8 @@ export function useWingsStats(serverId: string, enabled = true) {
                 uptime: raw.uptime ?? 0,
                 rx_per_sec: rxRate,
                 tx_per_sec: txRate,
+                rx_bytes: raw.network.rx_bytes ?? 0,
+                tx_bytes: raw.network.tx_bytes ?? 0,
               },
             ];
             return next.length > MAX_SAMPLES ? next.slice(next.length - MAX_SAMPLES) : next;

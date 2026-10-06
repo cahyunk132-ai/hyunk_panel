@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useWingsConsole } from '@/hooks/useWingsConsole';
 import { StatusDot } from '@/components/servers/StatusBadge';
-import { formatBytes, formatUptime } from '@/lib/utils/format';
 
 // ─── Renderer ANSI sederhana (cukup untuk log Minecraft/daemon) ─────────────
 
@@ -71,7 +70,6 @@ export function Console({ serverId }: { serverId: string }) {
     lines,
     needsEula,
     status,
-    stats,
     connectionState,
     connectionError,
     sendCommand,
@@ -178,19 +176,7 @@ export function Console({ serverId }: { serverId: string }) {
           {connectionError && <span className="text-red-400">{connectionError}</span>}
         </div>
         <div className="flex items-center gap-4 font-mono text-[11px] text-ink-muted">
-          {stats && (
-            <>
-              <span title="CPU">CPU {stats.cpu_absolute.toFixed(0)}%</span>
-              <span title="Memory">
-                RAM {formatBytes(stats.memory_bytes)}
-                {stats.memory_limit_bytes > 0 && ` / ${formatBytes(stats.memory_limit_bytes)}`}
-              </span>
-              <span title="Uptime">UP {formatUptime(stats.uptime)}</span>
-              <span title="Network">
-                ▲{formatBytes(stats.network.tx_bytes)} ▼{formatBytes(stats.network.rx_bytes)}
-              </span>
-            </>
-          )}
+          {/* Stat resource pindah ke ConsoleResourceBar di atas terminal. */}
           <button
             onClick={clearLines}
             className="rounded border border-line px-2 py-0.5 text-ink-faint transition-colors hover:text-ink"
