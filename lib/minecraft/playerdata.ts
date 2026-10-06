@@ -410,6 +410,27 @@ async function mapLimit<T, R>(
 }
 
 /**
+ * Resolve direktori playerdata: MC 1.21+ menyimpan .dat di `/{world}/players`,
+ * versi lama di `/{world}/playerdata`. Coba `players` dulu; kalau listing
+ * berhasil (array returned) pakai path itu, kalau gagal/throw fallback ke
+ * `playerdata`.
+ */
+async function resolvePlayerdataDir(
+  client: WingsClient,
+  serverUuid: string,
+  world: string,
+): Promise<string> {
+  const modern = `/${world}/players`;
+  try {
+    const entries = await client.listFiles(serverUuid, modern);
+    if (Array.isArray(entries)) return modern;
+  } catch {
+    // gagal → fallback ke path lama di bawah
+  }
+  return `/${world}/playerdata`;
+}
+
+/**
  * Daftar semua player yang punya playerdata di world aktif.
  * Melempar PlayerDataUnavailableError bila direktori playerdata tidak terbaca.
  */
@@ -418,7 +439,7 @@ export async function loadPlayerSummaries(
   serverUuid: string,
 ): Promise<PlayerListResult> {
   const files = await loadServerPlayerFiles(client, serverUuid);
-  const directory = `/${files.world}/playerdata`;
+  const directory = await resolvePlayerdataDir(client, serverUuid, files.world);
 
   let entries: WingsFileStat[];
   try {
@@ -472,7 +493,7 @@ export async function loadPlayerDetail(
   if (!PLAYERDATA_FILE_RE.test(`${uuid}.dat`)) return null;
 
   const files = await loadServerPlayerFiles(client, serverUuid);
-  const directory = `/${files.world}/playerdata`;
+  const directory = await resolvePlayerdataDir(client, serverUuid, files.world);
 
   let entries: WingsFileStat[];
   try {
