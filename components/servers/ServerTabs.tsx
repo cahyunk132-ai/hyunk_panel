@@ -9,6 +9,7 @@ export function ServerTabs({ serverId }: { serverId: string }) {
     { href: `/servers/${serverId}`, label: 'Overview' },
     { href: `/servers/${serverId}/console`, label: 'Console' },
     { href: `/servers/${serverId}/files`, label: 'Files' },
+    { href: `/servers/${serverId}/sftp`, label: 'SFTP' },
     { href: `/servers/${serverId}/backups`, label: 'Backups' },
     { href: `/servers/${serverId}/activity`, label: 'Activity' },
     { href: `/servers/${serverId}/settings`, label: 'Settings' },
