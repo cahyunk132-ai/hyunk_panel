@@ -84,6 +84,7 @@ export function PlayerManager({ serverId, canSendCommand }: PlayerManagerProps) 
   const [totalFiles, setTotalFiles] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [unsupported, setUnsupported] = useState<string | null>(null);
   const [error, setError] = useState<{ message: string; detail?: string } | null>(null);
   const [notice, setNotice] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
   const [busyUuid, setBusyUuid] = useState<string | null>(null);
@@ -115,6 +116,19 @@ export function PlayerManager({ serverId, canSendCommand }: PlayerManagerProps) 
           setPlayers([]);
           return;
         }
+        // Bedrock Edition → server sengaja tidak menyediakan playerdata.
+        // Tampilkan pesan info, bukan error.
+        if (json.supported === false) {
+          setUnsupported(
+            typeof json.message === 'string'
+              ? json.message
+              : 'Player data tidak tersedia untuk Bedrock Edition server.',
+          );
+          setPlayers([]);
+          setError(null);
+          return;
+        }
+        setUnsupported(null);
         setPlayers(Array.isArray(json.players) ? (json.players as PlayerSummary[]) : []);
         setTotalFiles(typeof json.total === 'number' ? json.total : 0);
         setError(null);
@@ -134,12 +148,13 @@ export function PlayerManager({ serverId, canSendCommand }: PlayerManagerProps) 
   useEffect(() => {
     void load();
     // Segarkan berkala supaya health/posisi tidak basi. Dipanggil hanya saat tab
-    // terlihat — tiap refresh membaca semua file playerdata di node.
+    // terlihat — tiap refresh membaca semua file playerdata di node. Server
+    // Bedrock tidak punya playerdata → tidak perlu di-refresh berkala.
     const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') void load({ silent: true });
+      if (document.visibilityState === 'visible' && !unsupported) void load({ silent: true });
     }, 60_000);
     return () => clearInterval(timer);
-  }, [load]);
+  }, [load, unsupported]);
 
   const loadDetail = useCallback(
     async (uuid: string) => {
@@ -226,7 +241,7 @@ export function PlayerManager({ serverId, canSendCommand }: PlayerManagerProps) 
           subtitle="Data dibaca langsung dari playerdata server (tanpa plugin)."
           action={
             <div className="flex items-center gap-2">
-              {!loading && !error && (
+              {!loading && !error && !unsupported && (
                 <span className="text-xs text-ink-faint">
                   {players.length}
                   {totalFiles > players.length ? `/${totalFiles}` : ''} player
@@ -258,6 +273,14 @@ export function PlayerManager({ serverId, canSendCommand }: PlayerManagerProps) 
             </div>
           )}
 
+          {unsupported && (
+            // Info (bukan error) — server ini memang tidak punya playerdata
+            // yang bisa dibaca (mis. Bedrock Edition).
+            <div className="rounded-lg border border-accent/25 bg-accent-soft px-4 py-3">
+              <p className="text-sm font-medium text-accent">{unsupported}</p>
+            </div>
+          )}
+
           {error && (
             <div className="rounded-lg border border-red-500/25 bg-red-500/5 px-4 py-3">
               <p className="text-sm font-medium text-red-300">{error.message}</p>
@@ -271,7 +294,7 @@ export function PlayerManager({ serverId, canSendCommand }: PlayerManagerProps) 
 
           {loading ? (
             <PageLoader label="Memuat data player…" />
-          ) : error ? null : players.length === 0 ? (
+          ) : unsupported ? null : error ? null : players.length === 0 ? (
             <div className="rounded-xl border border-dashed border-line bg-base-850/50 px-6 py-14 text-center text-sm text-ink-faint">
               Belum ada player yang pernah bergabung.
             </div>
