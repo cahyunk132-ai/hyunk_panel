@@ -60,6 +60,18 @@ export interface AllocationRow {
   created_at: string;
 }
 
+/** Allocation + server yang memakainya (untuk section Port di halaman node). */
+export interface NodeAllocation extends AllocationRow {
+  server: { id: string; name: string } | null;
+}
+
+/** Ringkasan jumlah allocation pada satu node. */
+export interface NodeAllocationStats {
+  total: number;
+  available: number;
+  assigned: number;
+}
+
 export interface ServerRow {
   id: string;
   uuid: string;

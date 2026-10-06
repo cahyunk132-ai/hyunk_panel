@@ -118,6 +118,20 @@ Remote API **sudah terimplementasi** di repo ini:
 | `GET /api/remote/credentials` | Info endpoint SFTP node |
 | `POST /api/remote/backups/{uuid}` | Lapor ukuran/checksum/hasil backup |
 
+### API allocation (panel internal)
+
+| Endpoint | Fungsi |
+|---|---|
+| `GET /api/nodes/{id}/allocations` | Daftar semua port node + status & server pemakainya (`?status=available` untuk port bebas saja) |
+| `POST /api/nodes/{id}/allocations` | Tambah allocation batch — body `{ ip: "0.0.0.0", ports: "25565-25600" }` (duplikat dilewati) |
+| `DELETE /api/nodes/{id}/allocations?allocation_id=…` | Hapus allocation — **hanya** bila `assigned_to IS NULL` |
+| `GET/POST/DELETE /api/servers/{id}/allocations` | Assign / unassign port tambahan ke satu server (node yang sama) |
+
+Alur: node → tambah range port → tersimpan di `allocations` → create/edit server memilih
+port yang tersedia (`assigned_to IS NULL`) → port ter-assign dan tidak bisa dipakai server lain.
+Membuat server lewat API tanpa `allocation_id` masih didukung (field `port` lama) dengan
+membuat allocation otomatis, berguna untuk impor/seed.
+
 **Aktivasi** (hanya setelah Fase 1a terbukti stabil!):
 
 1. Di node, edit `/etc/pterodactyl/config.yml`:
@@ -159,6 +173,12 @@ Remote API **sudah terimplementasi** di repo ini:
   diperbarui saat remote API aktif.
 - **Nodes** — kartu node, statistik live (RAM/CPU/versi wings + daftar server live), edit node
   lengkap dengan **rotasi token** via UI, mode maintenance, hapus-dari-panel (tidak menyentuh mesin).
+- **Allocation / Port (per node)** — section **Allocations/Port** di halaman detail node:
+  tambah port atau range port (mis. `25565-25600`) ke tabel `allocations`, lihat status
+  **Tersedia** / **Dipakai oleh: [nama server]**, dan hapus port (hanya yang belum dipakai).
+  Form *Create Server* hanya menampilkan port `assigned_to IS NULL` milik node terpilih —
+  begitu server dibuat, `assigned_to` di-set ke server itu sehingga port tidak bisa dipakai
+  server lain. Menghapus server otomatis melepas semua port-nya (`assigned_to = NULL`).
 - **Users (admin)** — buat user, ubah role, assign server + permission granular, cabut akses,
   hapus akun.
 - **Audit log** — halaman khusus admin (`/activity`) dengan filter aksi/server + pagination,
@@ -197,5 +217,7 @@ supabase/migrations/001_initial.sql
   cepat; backup berjalan async di node dan statusnya dilaporkan wings via remote API.
 - **Rotasi token node**: update di UI (Nodes → edit) atau `PATCH /api/nodes/{id}` dengan
   `{ token }` — langsung dienkripsi ulang.
-- **Server baru**: form menggunakan checkbox "Buat container di node" — hanya efektif setelah
-  Remote API aktif (wings mengambil konfigurasi dari panel saat create).
+- **Server baru**: port wajib dipilih dari allocation node (dropdown hanya berisi port
+  `assigned_to IS NULL`); tambah range port dulu di halaman node bila daftar kosong.
+  Checkbox "Buat container di node" hanya efektif setelah Remote API aktif
+  (wings mengambil konfigurasi dari panel saat create).

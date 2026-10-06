@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -602,7 +603,15 @@ export function ServerSettings({
             </Button>
           </div>
           <p className="text-[11px] text-ink-faint">
-            Port yang sedang digunakan server lain tidak akan muncul. Port utama tidak dapat dilepas.
+            Port yang sedang digunakan server lain tidak akan muncul. Port utama tidak dapat dilepas. Daftar port bebas
+            dikelola di halaman node →{' '}
+            <Link
+              href={`/nodes/${server.node_id}`}
+              className="font-medium text-accent transition-colors hover:text-accent-dim"
+            >
+              Allocations / Port
+            </Link>
+            .
           </p>
         </div>
       </Card>

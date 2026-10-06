@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
     uuid?: string;
     ip?: string;
     port?: number;
+    allocation_id?: string;
     memory_mb?: number;
     cpu_limit?: number;
     disk_mb?: number | null;
@@ -74,9 +75,18 @@ export async function POST(request: NextRequest) {
     provision?: boolean;
   } | null;
 
-  if (!body || !body.name || !body.node_id || !body.port || !body.memory_mb || !body.cpu_limit || !body.image || !body.startup) {
+  if (
+    !body ||
+    !body.name ||
+    !body.node_id ||
+    (!body.allocation_id && !body.port) ||
+    !body.memory_mb ||
+    !body.cpu_limit ||
+    !body.image ||
+    !body.startup
+  ) {
     return Response.json(
-      { error: 'Field wajib: name, node_id, port, memory_mb, cpu_limit, image, startup' },
+      { error: 'Field wajib: name, node_id, allocation_id, memory_mb, cpu_limit, image, startup' },
       { status: 400 },
     );
   }
@@ -93,18 +103,43 @@ export async function POST(request: NextRequest) {
   const serverUuid = body.uuid ?? crypto.randomUUID();
   const service = getSupabaseServiceClient();
 
-  // Allocation
-  const { data: alloc, error: allocErr } = await service
-    .from('allocations')
-    .upsert(
-      { node_id: node.id, ip: body.ip ?? '0.0.0.0', port: body.port },
-      { onConflict: 'node_id,ip,port' },
-    )
-    .select('id, assigned_to')
-    .single();
-  if (allocErr) return Response.json({ error: allocErr.message }, { status: 500 });
-  if (alloc.assigned_to) {
-    return Response.json({ error: `Port ${body.port} sudah dipakai server lain di panel` }, { status: 409 });
+  // ── Allocation: port diambil dari tabel `allocations` milik node ini ──────
+  // Jalur utama: `allocation_id` hasil dropdown (port sudah terdaftar di node).
+  // Jalur kompatibilitas: `port` mentah → allocation dibuat otomatis bila belum ada.
+  let alloc: { id: string; ip: string; port: number; assigned_to: string | null } | null = null;
+
+  if (body.allocation_id) {
+    const { data, error } = await service
+      .from('allocations')
+      .select('id, node_id, ip, port, assigned_to')
+      .eq('id', body.allocation_id)
+      .maybeSingle();
+    if (error) return Response.json({ error: error.message }, { status: 500 });
+    if (!data) return Response.json({ error: 'Allocation tidak ditemukan' }, { status: 404 });
+    if (data.node_id !== node.id) {
+      return Response.json({ error: 'Allocation bukan milik node yang dipilih' }, { status: 400 });
+    }
+    if (data.assigned_to) {
+      return Response.json(
+        { error: `Port ${data.ip}:${data.port} sudah dipakai server lain di node ini` },
+        { status: 409 },
+      );
+    }
+    alloc = data;
+  } else {
+    const { data, error } = await service
+      .from('allocations')
+      .upsert(
+        { node_id: node.id, ip: body.ip ?? '0.0.0.0', port: body.port },
+        { onConflict: 'node_id,ip,port' },
+      )
+      .select('id, ip, port, assigned_to')
+      .single();
+    if (error) return Response.json({ error: error.message }, { status: 500 });
+    if (data.assigned_to) {
+      return Response.json({ error: `Port ${body.port} sudah dipakai server lain di panel` }, { status: 409 });
+    }
+    alloc = data;
   }
 
   const { data: server, error: serverErr } = await service
@@ -132,7 +167,23 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: serverErr.message }, { status: 500 });
   }
 
-  await service.from('allocations').update({ assigned_to: server.id }).eq('id', alloc.id);
+  // Klaim port secara atomic: kalau balapan dengan request lain, server dibatalkan.
+  const { data: claimed, error: claimError } = await service
+    .from('allocations')
+    .update({ assigned_to: server.id })
+    .eq('id', alloc.id)
+    .is('assigned_to', null)
+    .select('id')
+    .maybeSingle();
+  if (claimError || !claimed) {
+    await service.from('servers').delete().eq('id', server.id);
+    return Response.json(
+      {
+        error: `Port ${alloc.ip}:${alloc.port} baru saja dipakai server lain. Pilih port lain dari daftar allocation.`,
+      },
+      { status: 409 },
+    );
+  }
   await service.from('server_users').upsert(
     {
       server_id: server.id,
@@ -159,11 +210,22 @@ export async function POST(request: NextRequest) {
     userId: user.id,
     serverId: server.id,
     action: 'server:create',
-    metadata: { name: body.name, node: node.name, provisioned, provisionError },
+    metadata: {
+      name: body.name,
+      node: node.name,
+      allocation: `${alloc.ip}:${alloc.port}`,
+      provisioned,
+      provisionError,
+    },
   });
 
   return Response.json(
-    { server: { id: server.id, uuid: server.uuid }, provisioned, provision_error: provisionError },
+    {
+      server: { id: server.id, uuid: server.uuid },
+      allocation: { id: alloc.id, ip: alloc.ip, port: alloc.port },
+      provisioned,
+      provision_error: provisionError,
+    },
     { status: 201 },
   );
 }

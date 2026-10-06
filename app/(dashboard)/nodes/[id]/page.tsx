@@ -5,6 +5,7 @@ import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { NodeStats } from '@/components/nodes/NodeStats';
+import { NodeAllocations } from '@/components/nodes/NodeAllocations';
 import { StatusBadge } from '@/components/servers/StatusBadge';
 import { NodeAdminActions } from '@/components/nodes/NodeAdminActions';
 
@@ -68,6 +69,8 @@ export default async function NodeDetailPage({ params }: { params: { id: string 
           Statistik live node hanya untuk admin.
         </Card>
       )}
+
+      <NodeAllocations nodeId={node.id as string} canManage={isAdmin} />
 
       <Card>
         <CardHeader title="Server terdaftar di panel" subtitle={`${servers?.length ?? 0} server`} />
