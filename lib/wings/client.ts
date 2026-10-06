@@ -25,6 +25,17 @@ export interface WingsNode {
   token_encrypted: string;
 }
 
+/**
+ * Encode path untuk Wings: slash tetap `/`, tapi nama segment di-encode.
+ *
+ * `encodeURIComponent()` meng-encode `/` menjadi `%2F`, sehingga
+ * `/world/playerdata` berubah menjadi `%2Fworld%2Fplayerdata` dan Wings tidak
+ * bisa membacanya. Encode per segment lalu gabungkan kembali dengan `/`.
+ */
+function encodePath(path: string): string {
+  return path.split('/').map(encodeURIComponent).join('/');
+}
+
 export class WingsError extends Error {
   constructor(
     public readonly status: number,
@@ -140,7 +151,7 @@ export class WingsClient {
   async listFiles(serverUuid: string, directory: string): Promise<WingsFileStat[]> {
     const list = await this.request<WingsFileStat[]>(
       'GET',
-      `/api/servers/${serverUuid}/files/list-directory?directory=${encodeURIComponent(directory || '/')}`,
+      `/api/servers/${serverUuid}/files/list-directory?directory=${encodePath(directory || '/')}`,
     );
     return Array.isArray(list) ? list : [];
   }
@@ -148,7 +159,7 @@ export class WingsClient {
   /** GET /api/servers/{uuid}/files/contents?file= — raw body (bukan JSON). */
   async getFileContents(serverUuid: string, file: string): Promise<string> {
     const res = await fetch(
-      `${this.baseUrl}/api/servers/${serverUuid}/files/contents?file=${encodeURIComponent(file)}`,
+      `${this.baseUrl}/api/servers/${serverUuid}/files/contents?file=${encodePath(file)}`,
       { headers: { Authorization: `Bearer ${this.token}`, Accept: 'text/plain' }, cache: 'no-store' },
     );
     if (!res.ok) {
@@ -167,7 +178,7 @@ export class WingsClient {
    */
   async getFileBinary(serverUuid: string, file: string): Promise<Buffer> {
     const res = await fetch(
-      `${this.baseUrl}/api/servers/${serverUuid}/files/contents?file=${encodeURIComponent(file)}`,
+      `${this.baseUrl}/api/servers/${serverUuid}/files/contents?file=${encodePath(file)}`,
       {
         headers: { Authorization: `Bearer ${this.token}`, Accept: 'application/octet-stream' },
         cache: 'no-store',
