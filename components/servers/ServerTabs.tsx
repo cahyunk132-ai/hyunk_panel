@@ -3,13 +3,14 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-export function ServerTabs({ serverId }: { serverId: string }) {
+export function ServerTabs({ serverId, showPlugins = false }: { serverId: string; showPlugins?: boolean }) {
   const pathname = usePathname();
   const tabs = [
     { href: `/servers/${serverId}`, label: 'Overview' },
     { href: `/servers/${serverId}/console`, label: 'Console' },
     { href: `/servers/${serverId}/files`, label: 'Files' },
     { href: `/servers/${serverId}/players`, label: 'Players' },
+    ...(showPlugins ? [{ href: `/servers/${serverId}/plugins`, label: 'Plugins' }] : []),
     { href: `/servers/${serverId}/sftp`, label: 'SFTP' },
     { href: `/servers/${serverId}/backups`, label: 'Backups' },
     { href: `/servers/${serverId}/activity`, label: 'Activity' },
