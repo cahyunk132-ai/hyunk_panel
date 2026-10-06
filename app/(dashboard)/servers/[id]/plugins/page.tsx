@@ -4,7 +4,7 @@ import { getEffectivePermissions, getServerByIdOrUuid, permissionsInclude } from
 import { PluginDownloader } from '@/components/servers/PluginDownloader';
 
 export const dynamic = 'force-dynamic';
-export const metadata = { title: 'Plugins' };
+export const metadata = { title: 'Mod & Plugin Downloader' };
 
 export default async function PluginsPage({ params }: { params: { id: string } }) {
   const user = await getSessionUser();

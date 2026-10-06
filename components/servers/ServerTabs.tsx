@@ -10,7 +10,7 @@ export function ServerTabs({ serverId, showPlugins = false }: { serverId: string
     { href: `/servers/${serverId}/console`, label: 'Console' },
     { href: `/servers/${serverId}/files`, label: 'Files' },
     { href: `/servers/${serverId}/players`, label: 'Players' },
-    ...(showPlugins ? [{ href: `/servers/${serverId}/plugins`, label: 'Plugins' }] : []),
+    ...(showPlugins ? [{ href: `/servers/${serverId}/plugins`, label: 'Mods & Plugins' }] : []),
     { href: `/servers/${serverId}/sftp`, label: 'SFTP' },
     { href: `/servers/${serverId}/backups`, label: 'Backups' },
     { href: `/servers/${serverId}/activity`, label: 'Activity' },
