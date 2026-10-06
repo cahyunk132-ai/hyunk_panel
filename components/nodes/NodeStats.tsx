@@ -80,7 +80,7 @@ export function NodeStats({ nodeId }: { nodeId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card className="px-5 py-4">
           <p className="text-xs uppercase tracking-wide text-ink-faint">RAM dipakai server</p>
           <p className="mt-1.5 text-xl font-bold">

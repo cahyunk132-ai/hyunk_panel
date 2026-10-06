@@ -341,7 +341,7 @@ export function PluginDownloader({
         </p>
       </div>
 
-      <form onSubmit={search} className="flex flex-col gap-2 sm:flex-row">
+      <form onSubmit={search} className="flex flex-col gap-2 md:flex-row">
         <label htmlFor="modrinth-search" className="sr-only">Cari konten Modrinth</label>
         <input
           id="modrinth-search"
@@ -475,7 +475,7 @@ export function PluginDownloader({
       )}
 
       {hits.length > 0 && (
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {hits.map((project) => {
             const state = installStates[project.project_id];
             const displayType =

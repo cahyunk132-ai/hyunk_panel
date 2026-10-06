@@ -18,7 +18,7 @@ export function ServerTabs({ serverId, showPlugins = false }: { serverId: string
   ];
 
   return (
-    <nav className="flex gap-1 overflow-x-auto border-b border-line-soft">
+    <nav className="flex flex-nowrap gap-1 overflow-x-auto border-b border-line-soft">
       {tabs.map((tab) => {
         const active =
           tab.href === `/servers/${serverId}` ? pathname === tab.href : pathname.startsWith(tab.href);
@@ -26,7 +26,7 @@ export function ServerTabs({ serverId, showPlugins = false }: { serverId: string
           <Link
             key={tab.href}
             href={tab.href}
-            className={`whitespace-nowrap border-b-2 px-4 py-2.5 text-sm transition-colors ${
+            className={`shrink-0 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm transition-colors ${
               active
                 ? 'border-accent font-medium text-accent'
                 : 'border-transparent text-ink-muted hover:text-ink'

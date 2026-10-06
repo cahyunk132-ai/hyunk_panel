@@ -135,8 +135,8 @@ export function BackupManager({ serverId }: { serverId: string }) {
           Belum ada backup.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-line bg-base-850">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-xl border border-line bg-base-850">
+          <table className="w-full min-w-[620px] text-sm">
             <thead>
               <tr className="border-b border-line-soft text-left text-[11px] uppercase tracking-wide text-ink-faint">
                 <th className="px-4 py-2.5">Nama</th>

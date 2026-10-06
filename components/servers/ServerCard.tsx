@@ -37,7 +37,7 @@ export function ServerCard({ server }: { server: ServerCardData }) {
           <StatusBadge status={server.is_suspended ? 'error' : server.status} />
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-2 text-[11px]">
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-2 text-[11px]">
           <div>
             <p className="text-ink-faint">RAM</p>
             <p className="mt-0.5 font-medium text-ink">{(server.memory_mb / 1024).toFixed(1)} GB</p>

@@ -33,20 +33,35 @@ export async function GET(request: NextRequest) {
   const allocationIds = servers
     .map((s) => s.allocation_id)
     .filter((v): v is string => typeof v === 'string');
-  const { data: allocations } = allocationIds.length
-    ? await service.from('allocations').select('*').in('id', allocationIds)
-    : { data: [] as AllocationRow[] };
-  const allocMap = new Map((allocations ?? []).map((a) => [a.id, a]));
+  const serverIds = servers.map((s) => s.id);
+  const [{ data: primaryRows }, { data: assignedRows }] = await Promise.all([
+    allocationIds.length
+      ? service.from('allocations').select('*').in('id', allocationIds)
+      : Promise.resolve({ data: [] as AllocationRow[] }),
+    serverIds.length
+      ? service.from('allocations').select('*').in('assigned_to', serverIds)
+      : Promise.resolve({ data: [] as AllocationRow[] }),
+  ]);
+  const primaryMap = new Map((primaryRows ?? []).map((a) => [a.id, a as AllocationRow]));
+  const assignedMap = new Map<string, AllocationRow[]>();
+  for (const allocation of (assignedRows ?? []) as AllocationRow[]) {
+    if (!allocation.assigned_to) continue;
+    const current = assignedMap.get(allocation.assigned_to) ?? [];
+    current.push(allocation);
+    assignedMap.set(allocation.assigned_to, current);
+  }
 
-  const out = servers.map((server) => ({
-    uuid: server.uuid,
-    settings: buildServerSettings(
-      server,
-      server.allocation_id ? (allocMap.get(server.allocation_id) ?? null) : null,
-      node.uuid,
-    ),
-    process_configuration: buildProcessConfiguration(server),
-  }));
+  const out = servers.map((server) => {
+    const assignedAllocations = assignedMap.get(server.id) ?? [];
+    const primary = server.allocation_id
+      ? (primaryMap.get(server.allocation_id) ?? assignedAllocations.find((a) => a.id === server.allocation_id) ?? null)
+      : (assignedAllocations[0] ?? null);
+    return {
+      uuid: server.uuid,
+      settings: buildServerSettings(server, primary, node.uuid, assignedAllocations),
+      process_configuration: buildProcessConfiguration(server),
+    };
+  });
 
   const total = count ?? out.length;
   return Response.json({

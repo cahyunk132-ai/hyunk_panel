@@ -24,7 +24,7 @@ export function CardHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-line-soft px-5 py-4">
+    <div className="flex flex-col items-start justify-between gap-4 border-b border-line-soft px-5 py-4 md:flex-row md:items-center">
       <div>
         <h3 className="text-sm font-semibold text-ink">{title}</h3>
         {subtitle && <p className="mt-0.5 text-xs text-ink-muted">{subtitle}</p>}

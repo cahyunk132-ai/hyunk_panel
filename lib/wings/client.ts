@@ -291,6 +291,16 @@ export class WingsClient {
     });
   }
 
+  /** POST /api/servers/{uuid}/sync — minta Wings mengambil konfigurasi terbaru dari Remote API panel. */
+  async syncServer(serverUuid: string): Promise<void> {
+    await this.request('POST', `/api/servers/${serverUuid}/sync`);
+  }
+
+  /** POST /api/servers/{uuid}/reinstall — jalankan ulang proses instalasi Wings. */
+  async reinstallServer(serverUuid: string): Promise<void> {
+    await this.request('POST', `/api/servers/${serverUuid}/reinstall`);
+  }
+
   /** DELETE /api/servers/{uuid} — menghapus container + VOLUME DATA di node. Berbahaya. */
   async destroyServer(serverUuid: string): Promise<void> {
     await this.request('DELETE', `/api/servers/${serverUuid}`);

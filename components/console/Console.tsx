@@ -189,7 +189,7 @@ export function Console({ serverId }: { serverId: string }) {
       {needsEula && (
         <div
           role="alert"
-          className="mx-3 mt-3 flex flex-col gap-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+          className="mx-3 mt-3 flex flex-col gap-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 md:flex-row md:items-center md:justify-between"
         >
           <div className="min-w-0">
             <p className="text-sm font-medium text-yellow-200">
@@ -197,7 +197,7 @@ export function Console({ serverId }: { serverId: string }) {
             </p>
             <p className="mt-1 text-xs text-yellow-200/70">
               Dengan menekan tombol di bawah, kamu menyetujui
-              <br className="hidden sm:block" /> Minecraft End User License Agreement dari Mojang/Microsoft.
+              <br className="hidden md:block" /> Minecraft End User License Agreement dari Mojang/Microsoft.
             </p>
             <p className="mt-1 text-xs text-yellow-200/70">
               →{' '}
@@ -228,7 +228,7 @@ export function Console({ serverId }: { serverId: string }) {
         ref={scrollRef}
         onScroll={onScroll}
         onClick={() => inputRef.current?.focus()}
-        className="hyunk-console console-scroll flex-1 overflow-y-auto bg-base-950 px-3 py-2"
+        className="hyunk-console console-scroll min-h-0 flex-1 overflow-y-auto bg-base-950 px-3 py-2"
       >
         {lines.length === 0 && (
           <p className="text-ink-faint">
@@ -253,7 +253,7 @@ export function Console({ serverId }: { serverId: string }) {
       </div>
 
       {/* Input command */}
-      <form onSubmit={submit} className="flex items-center gap-2 border-t border-line-soft bg-base-850 px-3 py-2.5">
+      <form onSubmit={submit} className="flex shrink-0 items-center gap-2 border-t border-line-soft bg-base-850 px-3 py-2.5">
         <span className="font-mono text-xs text-accent">❯</span>
         <input
           ref={inputRef}

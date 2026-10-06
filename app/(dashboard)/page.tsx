@@ -71,7 +71,7 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Nodes" value={nodeCount ?? 0} hint="node terdaftar di panel" />
         <StatCard label="Servers" value={serverList.length} hint={`${running} running`} />
         <StatCard
@@ -82,7 +82,7 @@ export default async function DashboardPage() {
         <StatCard label="Users" value={isAdmin ? (userCount ?? 0) : '—'} hint={isAdmin ? 'akun panel' : 'khusus admin'} />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-2">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">Servers</h2>
@@ -98,7 +98,7 @@ export default async function DashboardPage() {
               </p>
             </Card>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {serverList.slice(0, 6).map((server) => (
                 <ServerCard key={server.id} server={server} />
               ))}
@@ -111,7 +111,7 @@ export default async function DashboardPage() {
               Kelola →
             </Link>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {(nodes ?? []).map((node) => (
               <NodeCard
                 key={node.id as string}
