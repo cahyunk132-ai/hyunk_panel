@@ -11,12 +11,14 @@ export function ServerOverview({
   dbStatus,
   memoryMb,
   cpuLimit,
+  diskMb,
   isSuspended,
 }: {
   serverId: string;
   dbStatus: string;
   memoryMb: number;
   cpuLimit: number;
+  diskMb: number | null;
   isSuspended: boolean;
 }) {
   // Polling ringan untuk status tombol daya (juga me-resync status ke DB tiap 15 dtk).
@@ -45,6 +47,7 @@ export function ServerOverview({
         dbStatus={status}
         memoryMb={memoryMb}
         cpuLimit={cpuLimit}
+        diskMb={diskMb}
       />
     </div>
   );

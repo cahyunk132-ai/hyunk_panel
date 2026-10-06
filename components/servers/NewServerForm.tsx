@@ -44,6 +44,7 @@ export function NewServerForm({ nodes }: { nodes: NodeOption[] }) {
     port: 25565,
     memory_mb: 2048,
     cpu_limit: 100,
+    disk_mb: 10240,
     image: PRESETS[0].image,
     startup: PRESETS[0].startup,
     env: PRESETS[0].env,
@@ -60,6 +61,9 @@ export function NewServerForm({ nodes }: { nodes: NodeOption[] }) {
     setLoading(true);
     setError(null);
     try {
+      if (!Number.isFinite(Number(form.disk_mb)) || Number(form.disk_mb) < 1024) {
+        throw new Error('Disk minimal 1024 MB');
+      }
       const env: Record<string, string> = {};
       for (const rawLine of form.env.split('\n')) {
         const line = rawLine.trim();
@@ -77,6 +81,7 @@ export function NewServerForm({ nodes }: { nodes: NodeOption[] }) {
           port: Number(form.port),
           memory_mb: Number(form.memory_mb),
           cpu_limit: Number(form.cpu_limit),
+          disk_mb: Number(form.disk_mb) || 10240,
           image: form.image,
           startup: form.startup,
           env,
@@ -122,7 +127,7 @@ export function NewServerForm({ nodes }: { nodes: NodeOption[] }) {
           </Field>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Port primary" required>
             <Input
               type="number"
@@ -149,6 +154,16 @@ export function NewServerForm({ nodes }: { nodes: NodeOption[] }) {
               step={25}
               value={form.cpu_limit}
               onChange={(e) => setForm((f) => ({ ...f, cpu_limit: Number(e.target.value) }))}
+              required
+            />
+          </Field>
+          <Field label="Disk (MB)" hint="Min. 1024 MB" required>
+            <Input
+              type="number"
+              min={1024}
+              step={512}
+              value={form.disk_mb}
+              onChange={(e) => setForm((f) => ({ ...f, disk_mb: Number(e.target.value) }))}
               required
             />
           </Field>

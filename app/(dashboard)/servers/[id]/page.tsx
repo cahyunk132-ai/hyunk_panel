@@ -21,6 +21,7 @@ export default async function ServerPage({ params }: { params: { id: string } })
       dbStatus={server.status}
       memoryMb={server.memory_mb}
       cpuLimit={server.cpu_limit}
+      diskMb={server.disk_mb}
       isSuspended={server.is_suspended}
     />
   );

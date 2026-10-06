@@ -70,6 +70,12 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   if (Object.keys(update).length === 0) {
     return Response.json({ error: 'Tidak ada field yang diubah' }, { status: 400 });
   }
+  if (
+    update.disk_mb !== undefined &&
+    (typeof update.disk_mb !== 'number' || !Number.isFinite(update.disk_mb) || update.disk_mb < 1024)
+  ) {
+    return Response.json({ error: 'disk_mb minimal 1024 MB' }, { status: 400 });
+  }
 
   const service = getSupabaseServiceClient();
   const { data, error } = await service
