@@ -158,6 +158,28 @@ export class WingsClient {
     return res.text();
   }
 
+  /**
+   * GET /api/servers/{uuid}/files/contents?file= — versi BINARY (arrayBuffer).
+   *
+   * `getFileContents` memakai `res.text()`, aman hanya untuk file teks.
+   * Wings mengirim file biner (mis. playerdata `*.dat`) apa adanya, sehingga
+   * decode UTF-8 akan merusak byte-nya. Gunakan method ini untuk file biner.
+   */
+  async getFileBinary(serverUuid: string, file: string): Promise<Buffer> {
+    const res = await fetch(
+      `${this.baseUrl}/api/servers/${serverUuid}/files/contents?file=${encodeURIComponent(file)}`,
+      {
+        headers: { Authorization: `Bearer ${this.token}`, Accept: 'application/octet-stream' },
+        cache: 'no-store',
+      },
+    );
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new WingsError(res.status, `Wings GET contents → ${res.status}: ${text.slice(0, 400)}`);
+    }
+    return Buffer.from(await res.arrayBuffer());
+  }
+
   /** POST /api/servers/{uuid}/files/write?file= — raw string body. */
   async writeFile(serverUuid: string, file: string, content: string): Promise<void> {
     const res = await fetch(
