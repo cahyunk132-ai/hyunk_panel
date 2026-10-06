@@ -67,12 +67,23 @@ function parseAnsi(line: string): Span[] {
 // ─── Komponen utama ─────────────────────────────────────────────────────────
 
 export function Console({ serverId }: { serverId: string }) {
-  const { lines, status, stats, connectionState, connectionError, sendCommand, sendPowerState, clearLines } =
-    useWingsConsole(serverId);
+  const {
+    lines,
+    needsEula,
+    status,
+    stats,
+    connectionState,
+    connectionError,
+    sendCommand,
+    sendPowerState,
+    clearLines,
+  } = useWingsConsole(serverId);
   const [command, setCommand] = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [follow, setFollow] = useState(true);
+  const [eulaLoading, setEulaLoading] = useState(false);
+  const [eulaError, setEulaError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -87,6 +98,24 @@ export function Console({ serverId }: { serverId: string }) {
     if (!el) return;
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
     setFollow(atBottom);
+  }
+
+  async function acceptEula() {
+    setEulaLoading(true);
+    setEulaError(null);
+    try {
+      const res = await fetch(`/api/servers/${serverId}/eula`, { method: 'POST' });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        setEulaError(`Gagal menerima EULA: ${j.error ?? res.status}`);
+      }
+    } catch (err) {
+      setEulaError(
+        `Gagal menerima EULA: ${err instanceof Error ? err.message : 'Kesalahan jaringan'}`,
+      );
+    } finally {
+      setEulaLoading(false);
+    }
   }
 
   function submit(e: FormEvent) {
@@ -170,6 +199,43 @@ export function Console({ serverId }: { serverId: string }) {
           </button>
         </div>
       </div>
+
+      {needsEula && (
+        <div
+          role="alert"
+          className="mx-3 mt-3 flex flex-col gap-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-yellow-200">
+              ⚠ Server membutuhkan persetujuan EULA Minecraft
+            </p>
+            <p className="mt-1 text-xs text-yellow-200/70">
+              Dengan menekan tombol di bawah, kamu menyetujui
+              <br className="hidden sm:block" /> Minecraft End User License Agreement dari Mojang/Microsoft.
+            </p>
+            <p className="mt-1 text-xs text-yellow-200/70">
+              →{' '}
+              <a
+                href="https://aka.ms/MinecraftEULA"
+                target="_blank"
+                rel="noreferrer"
+                className="underline underline-offset-2 hover:text-yellow-100"
+              >
+                https://aka.ms/MinecraftEULA
+              </a>
+            </p>
+            {eulaError && <p className="mt-2 text-xs text-red-300">{eulaError}</p>}
+          </div>
+          <button
+            type="button"
+            onClick={() => void acceptEula()}
+            disabled={eulaLoading}
+            className="shrink-0 rounded-lg bg-yellow-500 px-4 py-1.5 text-xs font-medium text-black transition-colors hover:bg-yellow-400 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {eulaLoading ? 'Mengirim…' : 'Terima EULA & Restart'}
+          </button>
+        </div>
+      )}
 
       {/* Output */}
       <div
