@@ -132,6 +132,35 @@ port yang tersedia (`assigned_to IS NULL`) → port ter-assign dan tidak bisa di
 Membuat server lewat API tanpa `allocation_id` masih didukung (field `port` lama) dengan
 membuat allocation otomatis, berguna untuk impor/seed.
 
+### API player Bedrock (panel internal)
+
+Tab **Players** di server Bedrock (`image` mengandung `debian` ATAU `startup`/env `STARTUP`
+mengandung `bedrock_server`) memakai sumber data file server, bukan playerdata Java:
+
+| File | Isi |
+|---|---|
+| `allowlist.json` | `[{ name, xuid, ignoresPlayerLimit }]` — daftar player yang boleh join |
+| `permissions.json` | `[{ permission, xuid }]` — `operator` / `member` / `visitor` |
+
+| Endpoint | Fungsi |
+|---|---|
+| `GET /api/servers/{id}/bedrock/players` | Baca **kedua** file lalu gabungkan per xuid (permission `console`) |
+| `POST /api/servers/{id}/bedrock/players` | Tambah player — body `{ name, xuid, permission?, ignoresPlayerLimit? }` (nama & xuid wajib) |
+| `PUT /api/servers/{id}/bedrock/players/{xuid}` | Ubah `permission` (permissions.json) dan/atau `ignoresPlayerLimit` (allowlist.json) |
+| `DELETE /api/servers/{id}/bedrock/players/{xuid}` | Hapus dari **kedua** file sekaligus |
+
+Alur tulis konsisten untuk setiap operasi: baca file via `GET .../files/contents?file=/allowlist.json`
+→ modifikasi di server-side → tulis balik via `POST .../files/write?file=/allowlist.json`
+(hal yang sama untuk `permissions.json` bila perlu). Field/urutan entri yang tidak dikenal
+dipertahankan; file yang ada tapi bukan array JSON valid **tidak** ditimpa (dibalas error 502).
+
+Catatan: Bedrock tidak punya `usercache.json`, jadi nama player diinput manual dan XUID adalah
+ID Xbox Live (angka panjang) sebagai kunci. Bila server sedang **running** dan user punya
+permission `console.send`, perubahan langsung dikirim ke console: `allowlist reload` setelah
+`allowlist.json` berubah, `op <name>` / `deop <name>` setelah `permissions.json` berubah
+(best-effort — server offline bukan error, perubahan file berlaku saat start berikutnya).
+Dropdown permission & checkbox Ignore Player Limit di tabel auto-save (PUT) setiap kali diubah.
+
 **Aktivasi** (hanya setelah Fase 1a terbukti stabil!):
 
 1. Di node, edit `/etc/pterodactyl/config.yml`:
@@ -167,6 +196,13 @@ membuat allocation otomatis, berguna untuk impor/seed.
 - **File manager** — browse, edit (≤ 2 MB), rename, delete multi-select, compress/extract,
   folder baru, upload langsung ke wings (multipart via signed URL — melewati limit 4.5 MB Vercel),
   download via signed URL satu-kali-pakai.
+- **Players (Bedrock Edition)** — tab **Players** untuk server Bedrock (image `debian` /
+  startup `bedrock_server`) membaca & menulis `allowlist.json` + `permissions.json` lewat Wings
+  File API: tabel gabungan per XUID (nama, xuid, permission, ignore player limit), tambah player
+  manual (nama + XUID, karena Bedrock tidak punya usercache), dropdown permission & checkbox
+  ignore-limit auto-save, dan hapus dengan konfirmasi (dari kedua file). Server yang online
+  langsung menerima `allowlist reload` / `op` / `deop` via console. Tab Players server Java
+  tetap memakai playerdata (usercache/playerdata `.dat`, kick/ban/op) — tidak berubah.
 - **Power control** — start/stop/restart/kill (kill dengan konfirmasi modal), juga `/start` dll
   dari input console.
 - **Backups** — buat, download (signed URL), restore (dengan/tanpa truncate), hapus. Status
