@@ -211,6 +211,41 @@ export class WingsClient {
     }
   }
 
+  /**
+   * POST /api/servers/{uuid}/files/write?file= — binary stream body.
+   * Digunakan untuk file hasil ekstraksi addon agar file besar tidak perlu
+   * dimaterialisasi menjadi Buffer/string sebelum dikirim ke Wings.
+   */
+  async writeFileStream(
+    serverUuid: string,
+    file: string,
+    content: ReadableStream<Uint8Array>,
+    contentLength?: number,
+  ): Promise<void> {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${this.token}`,
+      'Content-Type': 'application/octet-stream',
+    };
+    if (contentLength !== undefined && Number.isFinite(contentLength) && contentLength >= 0) {
+      headers['Content-Length'] = String(contentLength);
+    }
+    const res = await fetch(
+      `${this.baseUrl}/api/servers/${serverUuid}/files/write?file=${encodeURIComponent(file)}`,
+      {
+        method: 'POST',
+        headers,
+        body: content,
+        cache: 'no-store',
+        // Node fetch requires duplex for a request body backed by a live stream.
+        duplex: 'half',
+      } as RequestInit & { duplex: 'half' },
+    );
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new WingsError(res.status, `Wings POST write stream → ${res.status}: ${text.slice(0, 400)}`);
+    }
+  }
+
   /** POST /api/servers/{uuid}/files/delete — { root, files: [] } */
   async deleteFiles(serverUuid: string, root: string, files: string[]): Promise<void> {
     await this.request('POST', `/api/servers/${serverUuid}/files/delete`, { root, files });
