@@ -3,7 +3,15 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-export function ServerTabs({ serverId, showPlugins = false }: { serverId: string; showPlugins?: boolean }) {
+export function ServerTabs({
+  serverId,
+  showPlugins = false,
+  showBedrockAddons = false,
+}: {
+  serverId: string;
+  showPlugins?: boolean;
+  showBedrockAddons?: boolean;
+}) {
   const pathname = usePathname();
   const tabs = [
     { href: `/servers/${serverId}`, label: 'Overview' },
@@ -11,6 +19,7 @@ export function ServerTabs({ serverId, showPlugins = false }: { serverId: string
     { href: `/servers/${serverId}/files`, label: 'Files' },
     { href: `/servers/${serverId}/players`, label: 'Players' },
     ...(showPlugins ? [{ href: `/servers/${serverId}/plugins`, label: 'Mods & Plugins' }] : []),
+    ...(showBedrockAddons ? [{ href: `/servers/${serverId}/addons`, label: 'Addons' }] : []),
     { href: `/servers/${serverId}/sftp`, label: 'SFTP' },
     { href: `/servers/${serverId}/backups`, label: 'Backups' },
     { href: `/servers/${serverId}/activity`, label: 'Activity' },

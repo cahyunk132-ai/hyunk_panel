@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { getServerByIdOrUuid, getEffectivePermissions, permissionsInclude } from '@/lib/auth/rbac';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
+import { isBedrockServer } from '@/lib/minecraft/playerdata';
 import { StatusBadge } from '@/components/servers/StatusBadge';
 import { ServerTabs } from '@/components/servers/ServerTabs';
 import { Badge } from '@/components/ui/Badge';
@@ -69,7 +70,11 @@ export default async function ServerLayout({
         </Badge>
       </div>
 
-      <ServerTabs serverId={server.id} showPlugins={server.image.toLowerCase().includes('java')} />
+      <ServerTabs
+        serverId={server.id}
+        showPlugins={server.image.toLowerCase().includes('java')}
+        showBedrockAddons={isBedrockServer(server)}
+      />
       <div className="min-h-0 flex-1">{children}</div>
     </div>
   );
