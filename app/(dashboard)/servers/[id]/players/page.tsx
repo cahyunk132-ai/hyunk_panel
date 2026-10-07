@@ -35,5 +35,12 @@ export default async function PlayersPage({ params }: { params: { id: string } }
     );
   }
 
-  return <PlayerManager serverId={server.id} canSendCommand={canSendCommand} />;
+  // canEditFiles dipakai tombol Reset Data (hapus file playerdata via Wings).
+  return (
+    <PlayerManager
+      serverId={server.id}
+      canSendCommand={canSendCommand}
+      canEditFiles={canEditFiles}
+    />
+  );
 }

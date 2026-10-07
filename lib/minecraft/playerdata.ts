@@ -453,6 +453,43 @@ async function resolvePlayerdataDir(
   return `/${world}/playerdata`;
 }
 
+export interface PlayerDataFileRef {
+  /** Direktori absolut file, contoh: `/world/playerdata`. */
+  directory: string;
+  /** Nama file persis seperti di listing (preserve case), contoh: `{uuid}.dat`. */
+  fileName: string;
+}
+
+/**
+ * Cari file playerdata (`.dat`) milik satu UUID di world aktif.
+ * Memeriksa dua layout: `/{world}/players/data` (baru) lalu `/{world}/playerdata`
+ * (lama). Mengembalikan null bila file tidak ada di keduanya.
+ */
+export async function findPlayerDataFile(
+  client: WingsClient,
+  serverUuid: string,
+  uuid: string,
+): Promise<PlayerDataFileRef | null> {
+  const world = await getWorldName(client, serverUuid);
+  const key = normalizeUuid(uuid);
+  for (const directory of [`/${world}/players/data`, `/${world}/playerdata`]) {
+    let entries: WingsFileStat[];
+    try {
+      entries = await client.listFiles(serverUuid, directory);
+    } catch {
+      continue; // direktori tidak ada → coba layout berikutnya
+    }
+    const fileName = entries.find(
+      (entry) =>
+        !entry.directory &&
+        PLAYERDATA_FILE_RE.test(entry.name) &&
+        normalizeUuid(entry.name.replace(/\.dat$/i, '')) === key,
+    )?.name;
+    if (fileName) return { directory, fileName };
+  }
+  return null;
+}
+
 /**
  * Daftar semua player yang punya playerdata di world aktif.
  * Melempar PlayerDataUnavailableError bila direktori playerdata tidak terbaca.
