@@ -41,8 +41,8 @@ Browser ──► /api/... (Next.js API route, serverless) ──► Wings API (
 ### 1. Supabase
 
 1. Buat project baru di [supabase.com](https://supabase.com).
-2. Buka **SQL Editor**, jalankan [`001_initial.sql`](supabase/migrations/001_initial.sql), lalu [`002_role_management.sql`](supabase/migrations/002_role_management.sql).
-   Migration kedua menambahkan role hierarchy, subuser assignment, batas lima Owner Panel, dan policy RLS berbasis role.
+2. Buka **SQL Editor**, jalankan [`001_initial.sql`](supabase/migrations/001_initial.sql), [`002_role_management.sql`](supabase/migrations/002_role_management.sql), lalu [`003_egg_system.sql`](supabase/migrations/003_egg_system.sql).
+   Migration kedua menambahkan role hierarchy, subuser assignment, batas lima Owner Panel, dan policy RLS berbasis role. Migration ketiga menambahkan Egg, versi, assignment Egg ke node, serta referensi Egg/versi aktif pada server.
 3. Buat user pertama: **Authentication → Users → Add user** (email + password).
 4. Jadikan Owner Panel pertama — di SQL Editor:
    ```sql
@@ -244,6 +244,8 @@ lib/
   supabase/     → client browser/server/service
   auth/         → session.ts, rbac.ts (checkPermission)
 supabase/migrations/001_initial.sql
+supabase/migrations/002_role_management.sql
+supabase/migrations/003_egg_system.sql
 ```
 
 ## Catatan operasional

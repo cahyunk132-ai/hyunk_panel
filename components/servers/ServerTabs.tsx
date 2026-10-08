@@ -12,14 +12,12 @@ export function ServerTabs({
   serverId,
   permissions,
   canViewActivity,
-  canManageSubusers,
   showPlugins = false,
   showBedrockAddons = false,
 }: {
   serverId: string;
   permissions: string[];
   canViewActivity: boolean;
-  canManageSubusers: boolean;
   showPlugins?: boolean;
   showBedrockAddons?: boolean;
 }) {
@@ -45,9 +43,7 @@ export function ServerTabs({
       ? [{ href: `/servers/${serverId}/backups`, label: 'Backups' }]
       : []),
     ...(canViewActivity ? [{ href: `/servers/${serverId}/activity`, label: 'Activity' }] : []),
-    ...(hasPermission(permissions, 'settings') || canManageSubusers
-      ? [{ href: `/servers/${serverId}/settings`, label: canManageSubusers && !hasPermission(permissions, 'settings') ? 'Subuser' : 'Settings' }]
-      : []),
+    { href: `/servers/${serverId}/settings`, label: 'Settings' },
   ];
 
   return (

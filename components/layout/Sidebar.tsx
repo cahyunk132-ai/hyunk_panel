@@ -46,6 +46,16 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    href: '/admin/eggs',
+    label: 'Egg Manager',
+    icon: (
+      <svg {...iconProps}>
+        <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" />
+        <path d="m4.5 7.7 7.5 4.4 7.5-4.4M12 12.1V21" />
+      </svg>
+    ),
+  },
+  {
     href: '/nodes',
     label: 'Nodes',
     icon: (

@@ -107,6 +107,17 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     }
   }
 
+  // The legacy manual image/startup editor is still available to panel admins.
+  // If it diverges from an Egg selection, clear the template IDs to avoid
+  // showing or applying stale Egg process metadata on subsequent syncs.
+  if (
+    (update.image !== undefined && update.image !== server.image) ||
+    (update.startup !== undefined && update.startup !== server.startup)
+  ) {
+    update.egg_id = null;
+    update.egg_version_id = null;
+  }
+
   const service = getSupabaseServiceClient();
   const { data, error } = await service
     .from('servers')
