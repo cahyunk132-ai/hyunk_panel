@@ -121,7 +121,25 @@ export interface EggVersionRow {
   is_recommended: boolean;
   sort_order: number;
   created_at: string;
+  // ── Generic Auto Download System (migration 004) ──
+  download_provider: DownloadProvider;
+  download_url_template: string | null;
+  download_variables: Record<string, string>;
+  download_filename: string | null;
+  download_executable: boolean;
 }
+
+export type DownloadProvider =
+  | 'none'
+  | 'paper'
+  | 'purpur'
+  | 'vanilla'
+  | 'fabric'
+  | 'forge'
+  | 'neoforge'
+  | 'quilt'
+  | 'bedrock'
+  | 'custom';
 
 export interface NodeEggRow {
   node_id: string;

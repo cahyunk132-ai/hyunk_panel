@@ -4,9 +4,16 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
-import { Field, Input, Textarea } from '@/components/ui/Input';
+import { Field, Input, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { PageLoader } from '@/components/ui/Spinner';
+import {
+  DEFAULT_DOWNLOAD_FILENAME,
+  DOWNLOAD_PROVIDERS,
+  DOWNLOAD_PROVIDER_LABELS,
+  type DownloadProvider,
+} from '@/lib/eggs/download-providers';
+import { formatBytes } from '@/lib/utils/format';
 
 interface EggVersion {
   id: string;
@@ -17,6 +24,11 @@ interface EggVersion {
   env_overrides: Record<string, unknown>;
   is_recommended: boolean;
   sort_order: number;
+  download_provider?: DownloadProvider | null;
+  download_url_template?: string | null;
+  download_variables?: Record<string, unknown> | null;
+  download_filename?: string | null;
+  download_executable?: boolean | null;
 }
 
 interface EggItem {
@@ -54,6 +66,11 @@ interface EggForm {
   node_ids: string[];
 }
 
+interface DownloadVariableRow {
+  key: string;
+  value: string;
+}
+
 interface VersionForm {
   name: string;
   minecraft_version: string;
@@ -61,6 +78,20 @@ interface VersionForm {
   env_overrides: string;
   is_recommended: boolean;
   sort_order: number;
+  download_provider: DownloadProvider;
+  download_build: string;
+  download_url_template: string;
+  download_variables: DownloadVariableRow[];
+  download_filename: string;
+  download_executable: boolean;
+}
+
+interface DownloadTestResult {
+  loading: boolean;
+  url?: string;
+  filename?: string;
+  size?: number | null;
+  error?: string | null;
 }
 
 const EMPTY_EGG_FORM: EggForm = {
@@ -83,7 +114,15 @@ const EMPTY_VERSION_FORM: VersionForm = {
   env_overrides: '{}',
   is_recommended: false,
   sort_order: 0,
+  download_provider: 'none',
+  download_build: 'latest',
+  download_url_template: '',
+  download_variables: [],
+  download_filename: 'server.jar',
+  download_executable: false,
 };
+
+const EMPTY_DOWNLOAD_TEST: DownloadTestResult = { loading: false };
 
 function parseJson(text: string, label: string): unknown {
   try {
@@ -113,6 +152,7 @@ export function EggManager() {
   const [versionForm, setVersionForm] = useState<VersionForm>(EMPTY_VERSION_FORM);
   const [editingVersionId, setEditingVersionId] = useState<string | null>(null);
   const [versionLoading, setVersionLoading] = useState(false);
+  const [downloadTest, setDownloadTest] = useState<DownloadTestResult>(EMPTY_DOWNLOAD_TEST);
 
   const loadEggs = useCallback(async () => {
     const response = await fetch('/api/admin/eggs', { cache: 'no-store' });
@@ -257,6 +297,7 @@ export function EggManager() {
     setVersions([]);
     setVersionForm(EMPTY_VERSION_FORM);
     setEditingVersionId(null);
+    setDownloadTest(EMPTY_DOWNLOAD_TEST);
     setError(null);
     setVersionLoading(true);
     try {
@@ -275,6 +316,11 @@ export function EggManager() {
 
   function editVersion(version: EggVersion) {
     setEditingVersionId(version.id);
+    const variables = (version.download_variables ?? {}) as Record<string, unknown>;
+    const buildValue = typeof variables.BUILD === 'string' ? variables.BUILD : 'latest';
+    const extraVariables = Object.entries(variables)
+      .filter(([key]) => key !== 'BUILD')
+      .map(([key, value]) => ({ key, value: String(value) }));
     setVersionForm({
       name: version.name,
       minecraft_version: version.minecraft_version ?? '',
@@ -282,12 +328,128 @@ export function EggManager() {
       env_overrides: JSON.stringify(version.env_overrides ?? {}, null, 2),
       is_recommended: version.is_recommended,
       sort_order: version.sort_order,
+      download_provider: version.download_provider ?? 'none',
+      download_build: buildValue,
+      download_url_template: version.download_url_template ?? '',
+      download_variables: extraVariables,
+      download_filename:
+        version.download_filename ?? DEFAULT_DOWNLOAD_FILENAME[version.download_provider ?? 'none'],
+      download_executable: Boolean(version.download_executable),
     });
+    setDownloadTest(EMPTY_DOWNLOAD_TEST);
   }
 
   function resetVersionForm() {
     setEditingVersionId(null);
     setVersionForm(EMPTY_VERSION_FORM);
+    setDownloadTest(EMPTY_DOWNLOAD_TEST);
+  }
+
+  function changeDownloadProvider(provider: DownloadProvider) {
+    setDownloadTest(EMPTY_DOWNLOAD_TEST);
+    setVersionForm((current) => {
+      // Pertahankan filename custom; ganti bila masih memakai default provider sebelumnya.
+      const previousDefault = DEFAULT_DOWNLOAD_FILENAME[current.download_provider];
+      const keepFilename =
+        current.download_filename.trim() !== '' && current.download_filename !== previousDefault;
+      return {
+        ...current,
+        download_provider: provider,
+        download_filename: keepFilename
+          ? current.download_filename
+          : DEFAULT_DOWNLOAD_FILENAME[provider],
+      };
+    });
+  }
+
+  function setDownloadVariableRow(index: number, field: 'key' | 'value', text: string) {
+    setDownloadTest(EMPTY_DOWNLOAD_TEST);
+    setVersionForm((current) => ({
+      ...current,
+      download_variables: current.download_variables.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, [field]: text } : row,
+      ),
+    }));
+  }
+
+  function addDownloadVariableRow() {
+    setVersionForm((current) => ({
+      ...current,
+      download_variables: [...current.download_variables, { key: '', value: '' }],
+    }));
+  }
+
+  function removeDownloadVariableRow(index: number) {
+    setVersionForm((current) => ({
+      ...current,
+      download_variables: current.download_variables.filter((_, rowIndex) => rowIndex !== index),
+    }));
+  }
+
+  function buildDownloadVariables(): Record<string, string> {
+    const variables: Record<string, string> = {};
+    for (const row of versionForm.download_variables) {
+      const key = row.key.trim();
+      if (key) variables[key] = row.value;
+    }
+    // BUILD disimpan di download_variables (tidak ada kolom terpisah) — hanya
+    // untuk provider built-in; custom memakai tabel variabel langsung.
+    if (versionForm.download_provider !== 'none' && versionForm.download_provider !== 'custom') {
+      variables.BUILD = versionForm.download_build.trim() || 'latest';
+    }
+    return variables;
+  }
+
+  function buildVersionPayload() {
+    const provider = versionForm.download_provider;
+    return {
+      name: versionForm.name,
+      minecraft_version: versionForm.minecraft_version || null,
+      docker_image: versionForm.docker_image || null,
+      env_overrides: parseJson(versionForm.env_overrides, 'env_overrides'),
+      is_recommended: versionForm.is_recommended,
+      sort_order: Number(versionForm.sort_order),
+      download_provider: provider,
+      download_url_template: provider === 'custom' ? versionForm.download_url_template.trim() || null : null,
+      download_variables: buildDownloadVariables(),
+      download_filename:
+        provider === 'none' ? null : versionForm.download_filename.trim() || null,
+      download_executable: provider !== 'none' && versionForm.download_executable,
+    };
+  }
+
+  async function testDownloadUrl() {
+    setError(null);
+    setDownloadTest({ loading: true });
+    try {
+      const provider = versionForm.download_provider;
+      const query = new URLSearchParams({ provider });
+      if (versionForm.minecraft_version.trim()) {
+        query.set('minecraft_version', versionForm.minecraft_version.trim());
+      }
+      if (provider !== 'custom' && versionForm.download_build.trim()) {
+        query.set('build', versionForm.download_build.trim());
+      }
+      if (provider === 'custom') {
+        query.set('url_template', versionForm.download_url_template);
+        query.set('variables', JSON.stringify(buildDownloadVariables()));
+      }
+      if (versionForm.download_filename.trim()) {
+        query.set('filename', versionForm.download_filename.trim());
+      }
+      query.set('executable', String(versionForm.download_executable));
+      const response = await fetch(`/api/download/resolve?${query.toString()}`, { cache: 'no-store' });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || json.ok === false) {
+        throw new Error(responseError(json, `Test URL gagal (${response.status}).`));
+      }
+      setDownloadTest({ loading: false, url: json.url, filename: json.filename, size: json.size ?? null });
+    } catch (err) {
+      setDownloadTest({
+        loading: false,
+        error: err instanceof Error ? err.message : 'Test URL gagal.',
+      });
+    }
   }
 
   async function saveVersion(event: FormEvent) {
@@ -296,14 +458,7 @@ export function EggManager() {
     setBusy(true);
     setError(null);
     try {
-      const payload = {
-        name: versionForm.name,
-        minecraft_version: versionForm.minecraft_version || null,
-        docker_image: versionForm.docker_image || null,
-        env_overrides: parseJson(versionForm.env_overrides, 'env_overrides'),
-        is_recommended: versionForm.is_recommended,
-        sort_order: Number(versionForm.sort_order),
-      };
+      const payload = buildVersionPayload();
       const url = editingVersionId
         ? `/api/admin/eggs/${versionsEgg.id}/versions/${editingVersionId}`
         : `/api/admin/eggs/${versionsEgg.id}/versions`;
@@ -505,6 +660,9 @@ export function EggManager() {
                         <span className="text-sm font-medium text-ink">{version.name}</span>
                         {version.minecraft_version && <Badge tone="blue">Minecraft {version.minecraft_version}</Badge>}
                         {version.is_recommended && <Badge tone="yellow">★ Recommended</Badge>}
+                        {version.download_provider && version.download_provider !== 'none' && (
+                          <Badge tone="violet">⬇ {DOWNLOAD_PROVIDER_LABELS[version.download_provider]}</Badge>
+                        )}
                       </div>
                       <code className="mt-1 block break-all font-mono text-[10px] text-ink-faint">{version.docker_image || versionsEgg?.docker_image}</code>
                     </div>
@@ -539,6 +697,156 @@ export function EggManager() {
                   <input type="checkbox" checked={versionForm.is_recommended} onChange={(event) => setVersionForm((current) => ({ ...current, is_recommended: event.target.checked }))} className="accent-accent" />
                   Tandai sebagai recommended (versi rekomendasi tunggal untuk Egg ini)
                 </label>
+
+                <div className="space-y-3 rounded-lg border border-line-soft bg-base-900/40 p-3">
+                  <Field label="Download Provider" hint="Auto download file server dari provider saat dipasang ke server. Pilih None untuk upload manual.">
+                    <Select
+                      value={versionForm.download_provider}
+                      onChange={(event) => changeDownloadProvider(event.target.value as DownloadProvider)}
+                      disabled={busy}
+                    >
+                      {DOWNLOAD_PROVIDERS.map((provider) => (
+                        <option key={provider} value={provider}>
+                          {DOWNLOAD_PROVIDER_LABELS[provider]}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+
+                  {versionForm.download_provider !== 'none' && versionForm.download_provider !== 'custom' && (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field label="Build / versi provider" hint="Default latest — di-resolve otomatis dari API provider (Paper/Purpur = nomor build, Forge = latest/recommended/versi, Bedrock = nomor versi).">
+                        <Input
+                          value={versionForm.download_build}
+                          onChange={(event) => {
+                            setDownloadTest(EMPTY_DOWNLOAD_TEST);
+                            setVersionForm((current) => ({ ...current, download_build: event.target.value }));
+                          }}
+                          placeholder="latest"
+                          disabled={busy}
+                        />
+                      </Field>
+                      <Field label="MC Version" hint="Otomatis memakai field Minecraft version di atas; kosongkan untuk versi terbaru (jika provider mendukung).">
+                        <Input value={versionForm.minecraft_version || '(kosong → latest)'} disabled readOnly />
+                      </Field>
+                    </div>
+                  )}
+
+                  {versionForm.download_provider === 'custom' && (
+                    <>
+                      <Field
+                        label="URL Template"
+                        hint="Placeholder {KEY} diganti dari tabel variabel + MC_VERSION/BUILD/VERSION. Contoh: https://example.com/download/{VERSION}/{FILE}"
+                      >
+                        <Textarea
+                          value={versionForm.download_url_template}
+                          onChange={(event) => {
+                            setDownloadTest(EMPTY_DOWNLOAD_TEST);
+                            setVersionForm((current) => ({ ...current, download_url_template: event.target.value }));
+                          }}
+                          rows={2}
+                          className="font-mono text-[11px]"
+                          placeholder="https://example.com/download/{VERSION}/{FILE}"
+                          disabled={busy}
+                        />
+                      </Field>
+                      <Field label="Download variables" hint="Pasangan key-value untuk substitusi template. Nilai boleh literal atau angka versi.">
+                        <div className="space-y-2">
+                          {versionForm.download_variables.length === 0 && (
+                            <p className="rounded-lg border border-dashed border-line px-3 py-2 text-[11px] text-ink-faint">
+                              Belum ada variabel. MC_VERSION, VERSION, dan BUILD tersedia otomatis.
+                            </p>
+                          )}
+                          {versionForm.download_variables.map((row, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                              <Input
+                                value={row.key}
+                                onChange={(event) => setDownloadVariableRow(index, 'key', event.target.value)}
+                                placeholder="KEY"
+                                className="font-mono text-[11px] uppercase"
+                                disabled={busy}
+                              />
+                              <span className="text-ink-faint">=</span>
+                              <Input
+                                value={row.value}
+                                onChange={(event) => setDownloadVariableRow(index, 'value', event.target.value)}
+                                placeholder="value"
+                                className="font-mono text-[11px]"
+                                disabled={busy}
+                              />
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => removeDownloadVariableRow(index)}
+                                disabled={busy}
+                                aria-label="Hapus variabel"
+                              >
+                                ✕
+                              </Button>
+                            </div>
+                          ))}
+                          <Button type="button" size="sm" variant="secondary" onClick={addDownloadVariableRow} disabled={busy}>
+                            + Variabel
+                          </Button>
+                        </div>
+                      </Field>
+                    </>
+                  )}
+
+                  {versionForm.download_provider !== 'none' && (
+                    <>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field label="Download Filename" hint="Nama file yang disimpan di root server. Default: server.jar (bedrock-server.zip untuk Bedrock).">
+                          <Input
+                            value={versionForm.download_filename}
+                            onChange={(event) => {
+                              setDownloadTest(EMPTY_DOWNLOAD_TEST);
+                              setVersionForm((current) => ({ ...current, download_filename: event.target.value }));
+                            }}
+                            placeholder={DEFAULT_DOWNLOAD_FILENAME[versionForm.download_provider]}
+                            disabled={busy}
+                          />
+                        </Field>
+                        <Field label="Executable" hint="chmod +x setelah upload/ekstrak — untuk binary non-jar seperti bedrock_server.">
+                          <label className="flex h-9 cursor-pointer items-center gap-2 text-xs text-ink-muted">
+                            <input
+                              type="checkbox"
+                              checked={versionForm.download_executable}
+                              onChange={(event) => {
+                                setDownloadTest(EMPTY_DOWNLOAD_TEST);
+                                setVersionForm((current) => ({ ...current, download_executable: event.target.checked }));
+                              }}
+                              className="accent-accent"
+                              disabled={busy}
+                            />
+                            Set executable setelah download
+                          </label>
+                        </Field>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button type="button" size="sm" variant="secondary" onClick={() => void testDownloadUrl()} loading={downloadTest.loading} disabled={busy}>
+                          Test URL
+                        </Button>
+                        <p className="text-[11px] text-ink-faint">Resolve template/API provider dan tampilkan URL final sebelum save.</p>
+                      </div>
+                      {downloadTest.error && (
+                        <p className="rounded-lg border border-red-500/25 bg-red-500/5 px-3 py-2 text-xs text-red-300">{downloadTest.error}</p>
+                      )}
+                      {downloadTest.url && (
+                        <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-3 py-2">
+                          <p className="text-[11px] font-semibold text-emerald-300">✓ URL berhasil di-resolve</p>
+                          <code className="mt-1 block break-all font-mono text-[11px] text-emerald-200/90">{downloadTest.url}</code>
+                          <p className="mt-1 text-[10px] text-emerald-200/70">
+                            {downloadTest.filename}
+                            {downloadTest.size != null ? ` · ${formatBytes(downloadTest.size)}` : ''}
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
                 <div className="flex flex-wrap justify-end gap-2">
                   {editingVersionId && <Button type="button" size="sm" variant="ghost" onClick={resetVersionForm} disabled={busy}>Batal edit</Button>}
                   <Button type="submit" size="sm" loading={busy}>{editingVersionId ? 'Simpan versi' : 'Tambah versi'}</Button>

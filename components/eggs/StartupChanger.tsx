@@ -8,6 +8,9 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { Field, Select } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { PageLoader } from '@/components/ui/Spinner';
+import { DOWNLOAD_PROVIDER_INFO } from '@/lib/eggs/download-providers';
+import { formatBytes } from '@/lib/utils/format';
+import type { DownloadProvider } from '@/types';
 
 interface EggVersion {
   id: string;
@@ -18,7 +21,32 @@ interface EggVersion {
   env_overrides: Record<string, unknown> | null;
   is_recommended: boolean;
   sort_order: number;
+  download_provider?: DownloadProvider | null;
+  download_filename?: string | null;
+  download_executable?: boolean | null;
 }
+
+type DownloadStage = 'idle' | 'resolving' | 'downloading' | 'uploading' | 'finalizing' | 'done' | 'error';
+
+interface DownloadState {
+  stage: DownloadStage;
+  bytes: number;
+  total: number | null;
+  filename: string | null;
+  url: string | null;
+  error: string | null;
+  /** Index langkah aktif saat error terjadi (untuk styling ✕). */
+  errorIndex?: number;
+}
+
+const IDLE_DOWNLOAD: DownloadState = {
+  stage: 'idle',
+  bytes: 0,
+  total: null,
+  filename: null,
+  url: null,
+  error: null,
+};
 
 interface EggOption {
   id: string;
@@ -78,6 +106,69 @@ function substituteStartup(startup: string, env: Record<string, string>): string
   );
 }
 
+const STAGE_ORDER: DownloadStage[] = ['resolving', 'downloading', 'uploading', 'finalizing'];
+
+/** Daftar langkah progress auto-download (NDJSON dari /download-server-file). */
+function DownloadProgress({ state }: { state: DownloadState }) {
+  if (state.stage === 'idle') return null;
+  const allDone = state.stage === 'done';
+  const current = allDone
+    ? STAGE_ORDER.length
+    : state.stage === 'error'
+      ? (state.errorIndex ?? STAGE_ORDER.length)
+      : STAGE_ORDER.indexOf(state.stage);
+
+  const downloadingLabel =
+    state.total != null
+      ? `Downloading… ${formatBytes(state.bytes)} / ${formatBytes(state.total)}`
+      : state.bytes > 0
+        ? `Downloading… ${formatBytes(state.bytes)}`
+        : 'Downloading…';
+  const steps: Array<{ id: DownloadStage; label: string }> = [
+    { id: 'resolving', label: 'Resolving URL…' },
+    { id: 'downloading', label: downloadingLabel },
+    { id: 'uploading', label: 'Uploading ke Wings…' },
+    { id: 'finalizing', label: 'Ekstrak & chmod…' },
+  ];
+  return (
+    <div className="space-y-1.5 rounded-lg border border-line-soft bg-base-900/60 px-3 py-3">
+      {steps.map((step, index) => {
+        const doneStep = allDone || index < current;
+        const active = !allDone && state.stage !== 'error' && index === current;
+        const failed = state.stage === 'error' && index === current;
+        return (
+          <div key={step.id} className="flex items-center gap-2 text-[11px]">
+            <span
+              className={`w-4 text-center ${
+                doneStep ? 'text-emerald-400' : failed ? 'text-red-400' : active ? 'text-accent' : 'text-ink-faint'
+              }`}
+            >
+              {doneStep ? '✓' : failed ? '✕' : active ? '…' : '·'}
+            </span>
+            <span
+              className={`${
+                doneStep ? 'text-ink-muted' : active ? 'text-ink' : 'text-ink-faint'
+              } ${step.id === 'uploading' ? 'hidden sm:inline' : ''}`}
+            >
+              {step.id === 'downloading' && (state.stage === 'downloading' || allDone)
+                ? step.label
+                : step.label.replace(/\s+\d.*$/, '').replace(/… .*$/, '…')}
+            </span>
+          </div>
+        );
+      })}
+      {state.stage === 'done' && (
+        <p className="text-[11px] font-medium text-emerald-300">
+          Done! {state.filename ?? 'File'} tersimpan di server ({formatBytes(state.bytes)}).
+        </p>
+      )}
+      {state.stage === 'error' && (
+        <p className="text-[11px] font-medium text-red-300">✕ {state.error ?? 'Download gagal.'}</p>
+      )}
+    </div>
+  );
+}
+
 export function StartupChanger({ serverId }: { serverId: string }) {
   const router = useRouter();
   const [data, setData] = useState<EggResponse | null>(null);
@@ -88,6 +179,7 @@ export function StartupChanger({ serverId }: { serverId: string }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [download, setDownload] = useState<DownloadState>(IDLE_DOWNLOAD);
 
   const loadEggs = useCallback(async () => {
     setLoading(true);
@@ -144,13 +236,15 @@ export function StartupChanger({ serverId }: { serverId: string }) {
     selectedEgg &&
       (selectedEgg.id !== data?.current.egg_id || (selectedVersionId || null) !== data?.current.version_id),
   );
-  const canApply = Boolean(selectedEgg?.available && changed && !busy);
+  const downloadInProgress = ['resolving', 'downloading', 'uploading', 'finalizing'].includes(download.stage);
+  const canApply = Boolean(selectedEgg?.available && changed && !busy && !downloadInProgress);
   const targetTitle = selectedEgg
     ? `${selectedEgg.name}${selectedVersion ? ` ${selectedVersion.name}` : ' (default image)'}`
     : 'Egg';
 
   function changeEgg(eggId: string) {
     setSelectedEggId(eggId);
+    setDownload(IDLE_DOWNLOAD);
     const egg = data?.eggs.find((item) => item.id === eggId);
     if (eggId === data?.current.egg_id) {
       setSelectedVersionId(data.current.version_id ?? '');
@@ -162,6 +256,128 @@ export function StartupChanger({ serverId }: { serverId: string }) {
 
   function changeVersion(versionId: string) {
     setSelectedVersionId(versionId);
+    setDownload(IDLE_DOWNLOAD);
+  }
+
+  /**
+   * Jalankan auto download untuk satu versi: POST /download-server-file
+   * (NDJSON stream) dan perbarui progress di UI. Return true bila sukses.
+   */
+  async function runDownload(versionId: string): Promise<boolean> {
+    setDownload({ ...IDLE_DOWNLOAD, stage: 'resolving' });
+    let lastStageIndex = 0;
+    try {
+      const response = await fetch(`/api/servers/${serverId}/download-server-file`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ egg_version_id: versionId }),
+      });
+      if (!response.ok || !response.body) {
+        const json = await response.json().catch(() => ({}));
+        throw new Error(
+          typeof json.error === 'string' ? json.error : `Permintaan download gagal (${response.status}).`,
+        );
+      }
+
+      let success = false;
+      let streamError: string | null = null;
+      const handleEvent = (event: Record<string, unknown>) => {
+        switch (event.stage) {
+          case 'resolving':
+            lastStageIndex = 0;
+            setDownload((prev) => ({ ...prev, stage: 'resolving' }));
+            break;
+          case 'resolved':
+            lastStageIndex = 1;
+            setDownload((prev) => ({
+              ...prev,
+              stage: 'downloading',
+              url: typeof event.url === 'string' ? event.url : prev.url,
+              filename: typeof event.filename === 'string' ? event.filename : prev.filename,
+              total: typeof event.size === 'number' ? event.size : prev.total,
+            }));
+            break;
+          case 'downloading':
+            lastStageIndex = 1;
+            setDownload((prev) => ({
+              ...prev,
+              stage: 'downloading',
+              bytes: typeof event.bytes === 'number' ? event.bytes : prev.bytes,
+              total: typeof event.total === 'number' ? event.total : prev.total,
+            }));
+            break;
+          case 'uploading':
+            lastStageIndex = 2;
+            setDownload((prev) => ({
+              ...prev,
+              stage: 'uploading',
+              bytes: typeof event.bytes === 'number' ? event.bytes : prev.bytes,
+              total: typeof event.total === 'number' ? event.total : prev.total,
+            }));
+            break;
+          case 'extracting':
+          case 'chmod':
+            lastStageIndex = 3;
+            setDownload((prev) => ({ ...prev, stage: 'finalizing' }));
+            break;
+          case 'done':
+            success = true;
+            setDownload((prev) => ({
+              ...prev,
+              stage: 'done',
+              filename: typeof event.filename === 'string' ? event.filename : prev.filename,
+              bytes: typeof event.size === 'number' ? event.size : prev.bytes,
+            }));
+            break;
+          case 'error':
+            streamError = typeof event.error === 'string' ? event.error : 'Download gagal.';
+            break;
+        }
+      };
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let newlineIndex: number;
+        while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, newlineIndex).trim();
+          buffer = buffer.slice(newlineIndex + 1);
+          if (line) {
+            try {
+              handleEvent(JSON.parse(line) as Record<string, unknown>);
+            } catch {
+              // abaikan baris non-JSON
+            }
+          }
+        }
+      }
+      const tail = buffer.trim();
+      if (tail) {
+        try {
+          handleEvent(JSON.parse(tail) as Record<string, unknown>);
+        } catch {
+          // abaikan
+        }
+      }
+      if (!success) {
+        throw new Error(
+          streamError ?? 'Koneksi terputus sebelum download selesai (file besar melebihi batas waktu platform?).',
+        );
+      }
+      return true;
+    } catch (err) {
+      setDownload((prev) => ({
+        ...prev,
+        stage: 'error',
+        errorIndex: lastStageIndex,
+        error: err instanceof Error ? err.message : 'Download gagal.',
+      }));
+      return false;
+    }
   }
 
   async function applyChange() {
@@ -169,6 +385,15 @@ export function StartupChanger({ serverId }: { serverId: string }) {
     setBusy(true);
     setError(null);
     try {
+      // Flow: auto download dulu (resolve → download → upload → chmod),
+      // baru simpan konfigurasi + trigger reinstall Wings.
+      if (selectedVersion && selectedVersion.download_provider && selectedVersion.download_provider !== 'none') {
+        const downloaded = await runDownload(selectedVersion.id);
+        if (!downloaded) {
+          setError('Auto download gagal — konfigurasi belum disimpan dan reinstall dibatalkan.');
+          return;
+        }
+      }
       const response = await fetch(`/api/servers/${serverId}/startup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -312,6 +537,39 @@ export function StartupChanger({ serverId }: { serverId: string }) {
             </div>
           )}
 
+          {selectedEgg && selectedVersion && selectedVersion.download_provider && selectedVersion.download_provider !== 'none' && (
+            <div className="space-y-3 rounded-lg border border-line-soft bg-base-900/40 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] text-ink-muted">
+                  <span className="font-semibold text-ink">⬇ {DOWNLOAD_PROVIDER_INFO[selectedVersion.download_provider]}</span>
+                  <span> · disimpan sebagai {selectedVersion.download_filename || 'server.jar'}</span>
+                  {selectedVersion.download_executable ? ' · chmod +x setelah upload' : ''}
+                </p>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy || downloadInProgress}
+                  loading={downloadInProgress}
+                  onClick={() => {
+                    setError(null);
+                    void runDownload(selectedVersion.id);
+                  }}
+                >
+                  Download &amp; Install
+                </Button>
+              </div>
+              <DownloadProgress state={download} />
+            </div>
+          )}
+
+          {selectedEgg && (!selectedVersion || !selectedVersion.download_provider || selectedVersion.download_provider === 'none') && (
+            <p className="rounded-lg border border-dashed border-line px-3 py-2 text-[11px] text-ink-faint">
+              {selectedVersion
+                ? 'Versi ini tidak memiliki auto download (provider: none) — upload file server (mis. server.jar) manual melalui File Manager sebelum menjalankan server.'
+                : 'Konfigurasi bawaan Egg tidak memiliki auto download — upload file server (mis. server.jar) manual melalui File Manager.'}
+            </p>
+          )}
+
           {error && (
             <div className="rounded-lg border border-red-500/25 bg-red-500/5 px-3 py-2 text-xs text-red-300">{error}</div>
           )}
@@ -335,6 +593,15 @@ export function StartupChanger({ serverId }: { serverId: string }) {
           <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-4 py-3 text-sm text-amber-100">
             Server akan direstart dan diinstall ulang dengan <strong>{targetTitle}</strong>. Data world dan plugin tetap aman. Lanjutkan?
           </div>
+          {selectedVersion?.download_provider && selectedVersion.download_provider !== 'none' && (
+            <div className="space-y-2">
+              <p className="text-[11px] text-ink-muted">
+                ⬇ {DOWNLOAD_PROVIDER_INFO[selectedVersion.download_provider]} — file server akan di-download
+                otomatis sebelum reinstall dimulai.
+              </p>
+              <DownloadProgress state={download} />
+            </div>
+          )}
           {error && (
             <div className="rounded-lg border border-red-500/25 bg-red-500/5 px-3 py-2 text-xs text-red-300">{error}</div>
           )}
