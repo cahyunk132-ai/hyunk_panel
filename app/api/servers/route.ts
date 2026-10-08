@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { requireUser } from '@/lib/auth/session';
-import { checkPermission } from '@/lib/auth/rbac';
+import { checkPermission, hasPermission } from '@/lib/auth/rbac';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { WingsClient } from '@/lib/wings/client';
 import { getNodeById, logActivity } from '@/lib/wings/resolve';
@@ -14,37 +14,31 @@ export async function GET() {
 
   const service = getSupabaseServiceClient();
 
-  if (user.role === 'admin') {
-    const { data, error } = await service
-      .from('servers')
-      .select('*, nodes(name, fqdn), allocations(ip, port)')
-      .order('created_at', { ascending: true });
+  const query = service
+    .from('servers')
+    .select('*, nodes(name, fqdn), allocations(ip, port)')
+    .order('created_at', { ascending: true });
+
+  if (await hasPermission(user, 'view_all_servers')) {
+    const { data, error } = await query;
     if (error) return Response.json({ error: error.message }, { status: 500 });
     return Response.json({ servers: data });
   }
 
-  // User biasa: milik sendiri + yang terdaftar di server_users.
+  // User/Subuser hanya melihat assignment eksplisit di server_users.
   const { data: assigned } = await service
     .from('server_users')
     .select('server_id')
     .eq('user_id', user.id);
   const ids = (assigned ?? []).map((r) => r.server_id as string);
-
-  const { data, error } = await service
-    .from('servers')
-    .select('*, nodes(name, fqdn), allocations(ip, port)')
-    .or(
-      ids.length > 0
-        ? `owner_id.eq.${user.id},id.in.(${ids.join(',')})`
-        : `owner_id.eq.${user.id}`,
-    )
-    .order('created_at', { ascending: true });
+  const scopedQuery = ids.length > 0 ? query.in('id', ids) : query.limit(0);
+  const { data, error } = await scopedQuery;
   if (error) return Response.json({ error: error.message }, { status: 500 });
   return Response.json({ servers: data });
 }
 
 /**
- * POST /api/servers — daftarkan server baru (admin).
+ * POST /api/servers — daftarkan server baru (Owner Panel/Admin).
  *
  * Body: { name, node_id, uuid?, port, memory_mb, cpu_limit, disk_mb?, image,
  *         startup, env?, owner_id?, provision? }
@@ -56,7 +50,9 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const user = await requireUser();
   if (user instanceof Response) return user;
-  if (user.role !== 'admin') return Response.json({ error: 'Butuh akses admin' }, { status: 403 });
+  if (!(await hasPermission(user, 'create_server'))) {
+    return Response.json({ error: 'Aksi ini hanya dapat dilakukan Owner Panel atau Admin' }, { status: 403 });
+  }
 
   const body = (await request.json().catch(() => null)) as {
     name?: string;
@@ -101,7 +97,18 @@ export async function POST(request: NextRequest) {
   }
 
   const serverUuid = body.uuid ?? crypto.randomUUID();
+  const serverOwnerId = body.owner_id || user.id;
   const service = getSupabaseServiceClient();
+  if (body.owner_id) {
+    const { data: selectedOwner } = await service
+      .from('users')
+      .select('id, role')
+      .eq('id', body.owner_id)
+      .maybeSingle();
+    if (!selectedOwner || selectedOwner.role !== 'user') {
+      return Response.json({ error: 'Server hanya dapat di-assign ke akun dengan role User' }, { status: 400 });
+    }
+  }
 
   // ── Allocation: port diambil dari tabel `allocations` milik node ini ──────
   // Jalur utama: `allocation_id` hasil dropdown (port sudah terdaftar di node).
@@ -148,7 +155,7 @@ export async function POST(request: NextRequest) {
       uuid: serverUuid,
       name: body.name,
       node_id: node.id,
-      owner_id: body.owner_id ?? user.id,
+      owner_id: serverOwnerId,
       allocation_id: alloc.id,
       memory_mb: body.memory_mb,
       cpu_limit: body.cpu_limit,
@@ -184,14 +191,35 @@ export async function POST(request: NextRequest) {
       { status: 409 },
     );
   }
-  await service.from('server_users').upsert(
-    {
-      server_id: server.id,
-      user_id: user.id,
-      permissions: ['start', 'stop', 'restart', 'kill', 'console', 'files', 'backups', 'settings'],
-    },
-    { onConflict: 'server_id,user_id' },
-  );
+  const { data: serverOwner } = await service
+    .from('users')
+    .select('role')
+    .eq('id', serverOwnerId)
+    .maybeSingle();
+  if (serverOwner?.role === 'user') {
+    await service.from('server_users').upsert(
+      {
+        server_id: server.id,
+        user_id: serverOwnerId,
+        role: 'user',
+        permissions: [
+          'start',
+          'stop',
+          'restart',
+          'console',
+          'console.send',
+          'monitoring',
+          'files.read',
+          'files.edit',
+          'backups',
+          'backup.restore',
+          'backups.delete',
+          'players',
+        ],
+      },
+      { onConflict: 'server_id,user_id' },
+    );
+  }
 
   let provisioned = false;
   let provisionError: string | null = null;

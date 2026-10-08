@@ -3,27 +3,51 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
+function hasPermission(permissions: string[], needed: string): boolean {
+  if (permissions.includes('*') || permissions.includes(needed)) return true;
+  return (needed === 'files.read' || needed === 'files.edit') && permissions.includes('files');
+}
+
 export function ServerTabs({
   serverId,
+  permissions,
+  canViewActivity,
+  canManageSubusers,
   showPlugins = false,
   showBedrockAddons = false,
 }: {
   serverId: string;
+  permissions: string[];
+  canViewActivity: boolean;
+  canManageSubusers: boolean;
   showPlugins?: boolean;
   showBedrockAddons?: boolean;
 }) {
   const pathname = usePathname();
+  const canReadFiles = hasPermission(permissions, 'files.read');
   const tabs = [
     { href: `/servers/${serverId}`, label: 'Overview' },
-    { href: `/servers/${serverId}/console`, label: 'Console' },
-    { href: `/servers/${serverId}/files`, label: 'Files' },
-    { href: `/servers/${serverId}/players`, label: 'Players' },
-    ...(showPlugins ? [{ href: `/servers/${serverId}/plugins`, label: 'Mods & Plugins' }] : []),
-    ...(showBedrockAddons ? [{ href: `/servers/${serverId}/addons`, label: 'Addons' }] : []),
-    { href: `/servers/${serverId}/sftp`, label: 'SFTP' },
-    { href: `/servers/${serverId}/backups`, label: 'Backups' },
-    { href: `/servers/${serverId}/activity`, label: 'Activity' },
-    { href: `/servers/${serverId}/settings`, label: 'Settings' },
+    ...(hasPermission(permissions, 'console')
+      ? [{ href: `/servers/${serverId}/console`, label: 'Console' }]
+      : []),
+    ...(canReadFiles ? [{ href: `/servers/${serverId}/files`, label: 'Files' }] : []),
+    ...(hasPermission(permissions, 'players')
+      ? [{ href: `/servers/${serverId}/players`, label: 'Players' }]
+      : []),
+    ...(showPlugins && canReadFiles
+      ? [{ href: `/servers/${serverId}/plugins`, label: 'Mods & Plugins' }]
+      : []),
+    ...(showBedrockAddons && canReadFiles
+      ? [{ href: `/servers/${serverId}/addons`, label: 'Addons' }]
+      : []),
+    ...(canReadFiles ? [{ href: `/servers/${serverId}/sftp`, label: 'SFTP' }] : []),
+    ...(hasPermission(permissions, 'backups')
+      ? [{ href: `/servers/${serverId}/backups`, label: 'Backups' }]
+      : []),
+    ...(canViewActivity ? [{ href: `/servers/${serverId}/activity`, label: 'Activity' }] : []),
+    ...(hasPermission(permissions, 'settings') || canManageSubusers
+      ? [{ href: `/servers/${serverId}/settings`, label: canManageSubusers && !hasPermission(permissions, 'settings') ? 'Subuser' : 'Settings' }]
+      : []),
   ];
 
   return (

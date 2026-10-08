@@ -1,6 +1,9 @@
 import { NextRequest } from 'next/server';
 import { authenticateWings } from '@/lib/remote/auth';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
+import { getEffectivePermissions, permissionsInclude } from '@/lib/auth/rbac';
+import type { SessionUser } from '@/lib/auth/session';
+import type { ServerRow } from '@/types';
 import { createClient } from '@supabase/supabase-js';
 
 export const runtime = 'nodejs';
@@ -40,7 +43,7 @@ export async function POST(request: NextRequest) {
   const service = getSupabaseServiceClient();
   const { data: server } = await service
     .from('servers')
-    .select('id, uuid, owner_id')
+    .select('*')
     .eq('node_id', node.id)
     .ilike('uuid', `${serverPrefix}%`)
     .maybeSingle();
@@ -71,22 +74,18 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: 'Password salah' }, { status: 403 });
   }
 
-  // Permission SFTP mengikuti assignment di panel.
+  // Permission SFTP mengikuti hierarki role + assignment server_users.
+  const sessionUser: SessionUser = {
+    id: profile.id as string,
+    username: profile.username as string,
+    email: profile.email as string,
+    role: profile.role as SessionUser['role'],
+  };
+  const panelPermissions = await getEffectivePermissions(sessionUser, server as ServerRow);
   let permissions: string[];
-  if (profile.role === 'admin' || server.owner_id === profile.id) {
-    permissions = ['*'];
-  } else {
-    const { data: assignment } = await service
-      .from('server_users')
-      .select('permissions')
-      .eq('server_id', server.id)
-      .eq('user_id', profile.id)
-      .maybeSingle();
-    const perms = (assignment?.permissions as string[] | undefined) ?? [];
-    if (perms.includes('files') || perms.includes('files.edit')) permissions = ['*'];
-    else if (perms.includes('files.read')) permissions = ['file.read', 'file.archive'];
-    else return Response.json({ error: 'Tidak ada akses file untuk server ini' }, { status: 403 });
-  }
+  if (permissionsInclude(panelPermissions, 'files.edit')) permissions = ['*'];
+  else if (permissionsInclude(panelPermissions, 'files.read')) permissions = ['file.read', 'file.archive'];
+  else return Response.json({ error: 'Tidak ada akses file untuk server ini' }, { status: 403 });
 
   return Response.json({
     server: server.uuid,

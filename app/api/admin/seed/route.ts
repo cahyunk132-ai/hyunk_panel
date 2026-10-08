@@ -12,7 +12,7 @@ export const runtime = 'nodejs';
  * Seed node existing + 5 server existing (hasil rekonstruksi docker inspect)
  * ke database. Idempotent: data yang sudah ada (berdasar UUID) di-skip.
  *
- * Hanya admin. Token node mentah dibaca dari env WINGS_SEED_NODE_TOKEN,
+ * Hanya Owner Panel/Admin. Token node mentah dibaca dari env WINGS_SEED_NODE_TOKEN,
  * dienkripsi AES-256-GCM sebelum disimpan, dan TIDAK PERNAH ditulis ke log.
  */
 
@@ -258,16 +258,6 @@ export async function POST() {
         .update({ assigned_to: insertedServer.id })
         .eq('id', allocationId);
     }
-
-    // Admin yang men-seed otomatis punya akses penuh.
-    await service.from('server_users').upsert(
-      {
-        server_id: insertedServer.id,
-        user_id: admin.id,
-        permissions: ['start', 'stop', 'restart', 'kill', 'console', 'files', 'backups', 'settings'],
-      },
-      { onConflict: 'server_id,user_id' },
-    );
 
     summary.servers_inserted += 1;
     summary.details.push({ uuid: seed.uuid, name: seed.name, action: 'inserted' });

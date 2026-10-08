@@ -3,7 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
-import { Badge } from '@/components/ui/Badge';
+import { RoleBadge } from '@/components/users/RoleBadge';
+import type { UserRole } from '@/types';
 
 export function Topbar({
   username,
@@ -13,7 +14,7 @@ export function Topbar({
 }: {
   username: string;
   email: string;
-  role: string;
+  role: UserRole;
   onMenuClick: () => void;
 }) {
   const router = useRouter();
@@ -66,7 +67,7 @@ export function Topbar({
           <p className="text-sm font-medium text-ink">{username}</p>
           <p className="text-[11px] text-ink-faint">{email}</p>
         </div>
-        <Badge tone={role === 'admin' ? 'accent' : 'default'}>{role}</Badge>
+        <RoleBadge role={role} />
         <button
           onClick={signOut}
           disabled={signingOut}

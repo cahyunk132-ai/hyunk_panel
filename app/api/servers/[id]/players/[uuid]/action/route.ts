@@ -126,9 +126,9 @@ export async function POST(request: Request, { params }: { params: { id: string;
   const playerAction = action as PlayerAction;
   const payload: ActionPayload = body?.payload ?? {};
 
-  // Aksi berbasis command butuh console.send; reset (hapus file playerdata) butuh files.edit.
-  const requiredPermission = playerAction === 'reset' ? 'files.edit' : 'console.send';
-  const checked = await checkPermission(user, requiredPermission, params.id);
+  // Aksi player di allow-list ini memakai permission khusus Player Management;
+  // permission ini tidak membuka endpoint command umum atau file manager.
+  const checked = await checkPermission(user, 'players', params.id);
   if (checked instanceof Response) return checked;
 
   const resolved = await resolveServerWings(checked.server);
@@ -232,7 +232,7 @@ export async function POST(request: Request, { params }: { params: { id: string;
       ? await checkPlayerOnline(server, client, name)
       : { state: 'offline' as PlayerOnlineState, serverRunning: false };
     const perms = await getEffectivePermissions(user, server);
-    const canSendCommand = permissionsInclude(perms, 'console.send');
+    const canSendCommand = permissionsInclude(perms, 'players') || permissionsInclude(perms, 'console.send');
 
     if (online.state !== 'offline' && name) {
       if (!canSendCommand) {

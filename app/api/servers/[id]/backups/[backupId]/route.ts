@@ -49,7 +49,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   const user = await requireUser();
   if (user instanceof Response) return user;
 
-  const checked = await checkPermission(user, 'backups', params.id);
+  const checked = await checkPermission(user, 'backup.restore', params.id);
   if (checked instanceof Response) return checked;
 
   const backup = await getBackup(checked.server.id, params.backupId);
@@ -82,7 +82,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   const user = await requireUser();
   if (user instanceof Response) return user;
 
-  const checked = await checkPermission(user, 'backups', params.id);
+  const checked = await checkPermission(user, 'backups.delete', params.id);
   if (checked instanceof Response) return checked;
 
   const backup = await getBackup(checked.server.id, params.backupId);

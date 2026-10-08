@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
+import { hasPermission } from '@/lib/auth/rbac';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { ActivityTable, type ActivityItem } from '@/components/activity/ActivityTable';
 import { Input, Select } from '@/components/ui/Input';
@@ -17,7 +18,7 @@ export default async function ActivityPage({
 }) {
   const user = await getSessionUser();
   if (!user) redirect('/login');
-  if (user.role !== 'admin') redirect('/');
+  if (!(await hasPermission(user, 'audit_log'))) redirect('/');
 
   const page = Math.max(parseInt(searchParams.page ?? '1', 10) || 1, 1);
   const actionFilter = (searchParams.action ?? '').trim();

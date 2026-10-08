@@ -1,9 +1,5 @@
 import { requireUser } from '@/lib/auth/session';
-import {
-  getEffectivePermissions,
-  getServerByIdOrUuid,
-  permissionsInclude,
-} from '@/lib/auth/rbac';
+import { checkPermission } from '@/lib/auth/rbac';
 import { logActivity, resolveServerWings } from '@/lib/wings/resolve';
 
 export const runtime = 'nodejs';
@@ -13,18 +9,11 @@ export async function POST(_request: Request, { params }: { params: { id: string
   const user = await requireUser();
   if (user instanceof Response) return user;
 
-  const server = await getServerByIdOrUuid(params.id);
-  if (!server) {
-    return Response.json({ error: 'Server tidak ditemukan' }, { status: 404 });
-  }
-  if (server.is_suspended && user.role !== 'admin') {
-    return Response.json({ error: 'Server sedang disuspend' }, { status: 403 });
-  }
-
-  const permissions = await getEffectivePermissions(user, server);
-  if (!permissionsInclude(permissions, 'files.edit')) {
-    return Response.json({ error: 'Butuh permission "files.edit"' }, { status: 403 });
-  }
+  const checked = await checkPermission(user, 'files.edit', params.id);
+  if (checked instanceof Response) return checked;
+  const powerAccess = await checkPermission(user, 'start', checked.server.id);
+  if (powerAccess instanceof Response) return powerAccess;
+  const server = checked.server;
 
   const resolved = await resolveServerWings(server);
   if (resolved instanceof Response) return resolved;

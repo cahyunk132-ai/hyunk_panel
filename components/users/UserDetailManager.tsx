@@ -3,12 +3,15 @@
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { Badge } from '@/components/ui/Badge';
+import { RoleBadge } from '@/components/users/RoleBadge';
+import type { UserRole } from '@/types';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Select } from '@/components/ui/Input';
 
 export interface Assignment {
   server_id: string;
+  role: 'user' | 'subuser';
   server_name: string;
   server_uuid: string;
   status: string;
@@ -21,17 +24,18 @@ interface ServerOption {
 }
 
 const ALL_PERMISSIONS = [
-  { value: '*', label: 'Full access (*)' },
-  { value: 'console', label: 'Lihat console' },
-  { value: 'console.send', label: 'Kirim command' },
   { value: 'start', label: 'Start' },
   { value: 'stop', label: 'Stop' },
   { value: 'restart', label: 'Restart' },
-  { value: 'kill', label: 'Kill' },
+  { value: 'console', label: 'Lihat console' },
+  { value: 'console.send', label: 'Kirim command' },
+  { value: 'monitoring', label: 'Monitoring' },
   { value: 'files.read', label: 'Baca file' },
   { value: 'files.edit', label: 'Edit file' },
-  { value: 'backups', label: 'Backup' },
-  { value: 'settings', label: 'Settings' },
+  { value: 'backups', label: 'Buat/lihat backup' },
+  { value: 'backup.restore', label: 'Restore backup' },
+  { value: 'backups.delete', label: 'Hapus backup (user)' },
+  { value: 'players', label: 'Player management' },
 ] as const;
 
 export function UserDetailManager({
@@ -44,7 +48,7 @@ export function UserDetailManager({
 }: {
   userId: string;
   username: string;
-  role: 'admin' | 'user';
+  role: UserRole;
   assignments: Assignment[];
   allServers: ServerOption[];
   isSelf: boolean;
@@ -56,7 +60,8 @@ export function UserDetailManager({
   const [error, setError] = useState<string | null>(null);
 
   const assignedIds = new Set(assignments.map((a) => a.server_id));
-  const available = allServers.filter((s) => !assignedIds.has(s.id));
+  const canAssignServer = role === 'user' || role === 'subuser';
+  const available = canAssignServer ? allServers.filter((s) => !assignedIds.has(s.id)) : [];
 
   function togglePerm(p: string) {
     setSelectedPerms((prev) => {
@@ -113,24 +118,7 @@ export function UserDetailManager({
     }
   }
 
-  async function changeRole(newRole: 'admin' | 'user') {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/admin/users/${userId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: newRole }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || 'Gagal mengubah role');
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal');
-    } finally {
-      setLoading(false);
-    }
-  }
+
 
   return (
     <div className="grid max-w-4xl gap-4">
@@ -143,17 +131,10 @@ export function UserDetailManager({
       <Card>
         <CardHeader title="Role" subtitle="Role global user di panel" />
         <div className="flex items-center justify-between px-5 py-4">
-          <Badge tone={role === 'admin' ? 'accent' : 'default'}>{role}</Badge>
-          {!isSelf && (
-            <Button
-              size="sm"
-              variant="secondary"
-              loading={loading}
-              onClick={() => changeRole(role === 'admin' ? 'user' : 'admin')}
-            >
-              Jadikan {role === 'admin' ? 'user' : 'admin'}
-            </Button>
-          )}
+          <RoleBadge role={role} />
+          <span className="text-xs text-ink-faint">
+            {isSelf ? 'Role akun Anda' : 'Role dapat diubah dari dropdown pada daftar Users'}
+          </span>
         </div>
       </Card>
 
@@ -172,7 +153,10 @@ export function UserDetailManager({
               className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-base-800/50 px-4 py-3"
             >
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">{a.server_name}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium">{a.server_name}</p>
+                  <RoleBadge role={a.role} />
+                </div>
                 <p className="truncate font-mono text-[10px] text-ink-faint">{a.server_uuid}</p>
               </div>
               <div className="flex flex-wrap gap-1">
@@ -204,22 +188,28 @@ export function UserDetailManager({
                     </option>
                   ))}
                 </Select>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {ALL_PERMISSIONS.map((p) => (
-                    <button
-                      key={p.value}
-                      type="button"
-                      onClick={() => togglePerm(p.value)}
-                      className={`rounded-md border px-2 py-1 text-[11px] transition-colors ${
-                        selectedPerms.has(p.value)
-                          ? 'border-accent/50 bg-accent-soft text-accent'
-                          : 'border-line bg-base-800 text-ink-muted hover:text-ink'
-                      }`}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
+                {role === 'subuser' ? (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {ALL_PERMISSIONS.filter((permission) => permission.value !== 'backups.delete').map((permission) => (
+                      <button
+                        key={permission.value}
+                        type="button"
+                        onClick={() => togglePerm(permission.value)}
+                        className={`rounded-md border px-2 py-1 text-[11px] transition-colors ${
+                          selectedPerms.has(permission.value)
+                            ? 'border-accent/50 bg-accent-soft text-accent'
+                            : 'border-line bg-base-800 text-ink-muted hover:text-ink'
+                        }`}
+                      >
+                        {permission.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="rounded-lg border border-line bg-base-800/50 px-3 py-2 text-xs text-ink-faint">
+                    User mendapat permission operasional standar. Pilihan permission khusus hanya berlaku untuk Subuser.
+                  </p>
+                )}
               </div>
               <div className="flex justify-end">
                 <Button type="submit" size="sm" loading={loading} disabled={!selectedServer || selectedPerms.size === 0}>

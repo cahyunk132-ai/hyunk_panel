@@ -21,7 +21,7 @@ export function SetupScreen() {
           Variabel environment belum diisi. Ikuti langkah di <code className="font-mono text-accent">README.md</code>:
         </p>
         <ol className="mt-3 list-decimal space-y-2 pl-5 text-ink-muted">
-          <li>Buat project di Supabase, lalu jalankan SQL di <code className="font-mono text-xs">supabase/migrations/001_initial.sql</code>.</li>
+          <li>Buat project di Supabase, lalu jalankan SQL migration <code className="font-mono text-xs">001_initial.sql</code> dan <code className="font-mono text-xs">002_role_management.sql</code>.</li>
           <li>
             Isi <code className="font-mono text-xs">.env.local</code> (di Vercel: Project → Settings → Environment Variables):
             <pre className="mt-2 overflow-x-auto rounded-lg bg-base-950 p-3 font-mono text-[11px] leading-relaxed text-ink">{`NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
@@ -31,7 +31,7 @@ WINGS_TOKEN_ENCRYPTION_KEY=<openssl rand -hex 32>
 WINGS_SEED_NODE_TOKEN=<token wings node>
 NEXT_PUBLIC_APP_URL=https://panel.wangstore.web.id`}</pre>
           </li>
-          <li>Buat user admin pertama di Supabase Auth, set <code className="font-mono text-xs">role = 'admin'</code> di tabel <code className="font-mono text-xs">public.users</code>.</li>
+          <li>Buat user pertama di Supabase Auth, lalu set <code className="font-mono text-xs">role = 'owner_panel'</code> di tabel <code className="font-mono text-xs">public.users</code>.</li>
           <li>Login, lalu panggil <code className="font-mono text-xs">POST /api/admin/seed</code> untuk mengimpor node + 5 server existing.</li>
         </ol>
       </div>

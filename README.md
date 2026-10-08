@@ -41,13 +41,12 @@ Browser ──► /api/... (Next.js API route, serverless) ──► Wings API (
 ### 1. Supabase
 
 1. Buat project baru di [supabase.com](https://supabase.com).
-2. Buka **SQL Editor**, jalankan isi [`supabase/migrations/001_initial.sql`](supabase/migrations/001_initial.sql).
-   Ini membuat tabel (`users`, `nodes`, `servers`, `allocations`, `server_users`,
-   `activity_logs`, `backups`), trigger auto-profile, dan semua policy RLS.
+2. Buka **SQL Editor**, jalankan [`001_initial.sql`](supabase/migrations/001_initial.sql), lalu [`002_role_management.sql`](supabase/migrations/002_role_management.sql).
+   Migration kedua menambahkan role hierarchy, subuser assignment, batas lima Owner Panel, dan policy RLS berbasis role.
 3. Buat user pertama: **Authentication → Users → Add user** (email + password).
-4. Jadikan admin — di SQL Editor:
+4. Jadikan Owner Panel pertama — di SQL Editor:
    ```sql
-   update public.users set role = 'admin' where email = 'email-anda@contoh.com';
+   update public.users set role = 'owner_panel' where email = 'email-anda@contoh.com';
    ```
 
 ### 2. Environment variables

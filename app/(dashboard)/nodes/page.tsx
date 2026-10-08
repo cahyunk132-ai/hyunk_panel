@@ -3,6 +3,7 @@ import { getSessionUser } from '@/lib/auth/session';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { NodeCard } from '@/components/nodes/NodeCard';
 import { NewNodeButton } from '@/components/nodes/NewNodeForm';
+import { isPanelAdmin } from '@/lib/auth/roles';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Nodes' };
@@ -10,6 +11,7 @@ export const metadata = { title: 'Nodes' };
 export default async function NodesPage() {
   const user = await getSessionUser();
   if (!user) redirect('/login');
+  if (!isPanelAdmin(user.role)) redirect('/');
 
   const service = getSupabaseServiceClient();
   const { data: nodes } = await service
@@ -33,7 +35,7 @@ export default async function NodesPage() {
             Mesin yang menjalankan Wings. Token node tersimpan terenkripsi (AES-256-GCM).
           </p>
         </div>
-        {user.role === 'admin' && <NewNodeButton />}
+        <NewNodeButton />
       </div>
 
       {(nodes ?? []).length === 0 ? (

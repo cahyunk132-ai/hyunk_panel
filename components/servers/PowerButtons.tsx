@@ -10,10 +10,18 @@ export function PowerButtons({
   serverId,
   status,
   disabled,
+  canStart,
+  canStop,
+  canRestart,
+  canKill,
 }: {
   serverId: string;
   status: string;
   disabled?: boolean;
+  canStart: boolean;
+  canStop: boolean;
+  canRestart: boolean;
+  canKill: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<PowerAction | null>(null);
@@ -45,42 +53,50 @@ export function PowerButtons({
 
   return (
     <div className="grid w-full grid-cols-2 gap-2 md:flex md:w-auto md:flex-wrap md:items-center md:gap-2">
-      <Button
-        size="sm"
-        variant="success"
-        onClick={() => send('start')}
-        loading={busy === 'start'}
-        disabled={disabled || isRunning}
-        title="Start server"
-      >
-        ▶ Start
-      </Button>
-      <Button
-        size="sm"
-        variant="secondary"
-        onClick={() => send('restart')}
-        loading={busy === 'restart'}
-        disabled={disabled || isOffline}
-      >
-        ↻ Restart
-      </Button>
-      <Button
-        size="sm"
-        variant="secondary"
-        onClick={() => send('stop')}
-        loading={busy === 'stop'}
-        disabled={disabled || isOffline}
-      >
-        ■ Stop
-      </Button>
-      <Button
-        size="sm"
-        variant="danger"
-        onClick={() => setConfirmKill(true)}
-        disabled={disabled || isOffline}
-      >
-        ✕ Kill
-      </Button>
+      {canStart && (
+        <Button
+          size="sm"
+          variant="success"
+          onClick={() => send('start')}
+          loading={busy === 'start'}
+          disabled={disabled || isRunning}
+          title="Start server"
+        >
+          ▶ Start
+        </Button>
+      )}
+      {canRestart && (
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => send('restart')}
+          loading={busy === 'restart'}
+          disabled={disabled || isOffline}
+        >
+          ↻ Restart
+        </Button>
+      )}
+      {canStop && (
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => send('stop')}
+          loading={busy === 'stop'}
+          disabled={disabled || isOffline}
+        >
+          ■ Stop
+        </Button>
+      )}
+      {canKill && (
+        <Button
+          size="sm"
+          variant="danger"
+          onClick={() => setConfirmKill(true)}
+          disabled={disabled || isOffline}
+        >
+          ✕ Kill
+        </Button>
+      )}
       {error && <span className="col-span-2 text-xs text-red-400 md:col-span-1">{error}</span>}
 
       <Modal open={confirmKill} onClose={() => setConfirmKill(false)} title="Kill server?">

@@ -9,7 +9,15 @@ import { PageLoader } from '@/components/ui/Spinner';
 import { formatBytes, formatRelativeTime } from '@/lib/utils/format';
 import type { BackupRow } from '@/types';
 
-export function BackupManager({ serverId }: { serverId: string }) {
+export function BackupManager({
+  serverId,
+  canDelete,
+  canRestore,
+}: {
+  serverId: string;
+  canDelete: boolean;
+  canRestore: boolean;
+}) {
   const [backups, setBackups] = useState<BackupRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -175,14 +183,18 @@ export function BackupManager({ serverId }: { serverId: string }) {
                           <Button size="sm" variant="ghost" onClick={() => downloadBackup(b)}>
                             ⬇
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={() => setRestoring(b)}>
-                            ↺
-                          </Button>
+                          {canRestore && (
+                            <Button size="sm" variant="ghost" onClick={() => setRestoring(b)}>
+                              ↺
+                            </Button>
+                          )}
                         </>
                       )}
-                      <Button size="sm" variant="ghost" onClick={() => setDeleting(b)}>
-                        🗑
-                      </Button>
+                      {canDelete && (
+                        <Button size="sm" variant="ghost" onClick={() => setDeleting(b)}>
+                          🗑
+                        </Button>
+                      )}
                     </div>
                   </td>
                 </tr>

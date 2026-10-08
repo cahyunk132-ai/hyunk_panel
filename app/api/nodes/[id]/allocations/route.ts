@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireAdmin, requireUser } from '@/lib/auth/session';
+import { requireAdmin } from '@/lib/auth/session';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { getNodeById, logActivity } from '@/lib/wings/resolve';
 import { formatAllocation, formatPortRanges, isValidAllocationIp, parsePortSpec } from '@/lib/utils/allocations';
@@ -39,10 +39,10 @@ async function resolveNode(idOrUuid: string): Promise<NodeRow | null> {
 /**
  * GET /api/nodes/{id}/allocations
  * Query: ?status=available → hanya port yang belum dipakai server.
- * Semua user yang login boleh membaca (sama seperti GET /api/nodes/{id}).
+ * Hanya Owner Panel/Admin boleh membaca allocation node.
  */
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  const user = await requireUser();
+  const user = await requireAdmin();
   if (user instanceof Response) return user;
 
   const node = await resolveNode(params.id);
