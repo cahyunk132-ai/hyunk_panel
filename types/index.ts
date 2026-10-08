@@ -1,6 +1,6 @@
 // ─── Tipe domain Hyunk Panel (mirror skema Supabase) ────────────────────────
 
-export type UserRole = 'admin' | 'user';
+export type UserRole = 'owner_panel' | 'admin' | 'moderator' | 'user' | 'subuser';
 
 export type ServerStatus =
   | 'running'
@@ -23,6 +23,10 @@ export type ServerPermission =
   | 'files.read'
   | 'files.edit'
   | 'backups'
+  | 'backup.restore'
+  | 'backups.delete'
+  | 'players'
+  | 'monitoring'
   | 'settings';
 
 export interface UserRow {
@@ -93,6 +97,7 @@ export interface ServerRow {
 export interface ServerUserRow {
   server_id: string;
   user_id: string;
+  role: 'user' | 'subuser';
   permissions: ServerPermission[];
 }
 

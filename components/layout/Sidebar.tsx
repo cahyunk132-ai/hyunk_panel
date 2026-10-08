@@ -3,11 +3,11 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
+import type { UserRole } from '@/types';
 
 interface NavItem {
   href: string;
   label: string;
-  admin?: boolean;
   icon: React.ReactNode;
 }
 
@@ -60,7 +60,6 @@ const NAV_ITEMS: NavItem[] = [
   {
     href: '/users',
     label: 'Users',
-    admin: true,
     icon: (
       <svg {...iconProps}>
         <circle cx="9" cy="8" r="3.5" />
@@ -72,7 +71,6 @@ const NAV_ITEMS: NavItem[] = [
   {
     href: '/activity',
     label: 'Audit Log',
-    admin: true,
     icon: (
       <svg {...iconProps}>
         <path d="M8 6h13M8 12h13M8 18h13" />
@@ -83,12 +81,12 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 export function Sidebar({
-  isAdmin,
+  role,
   username,
   isOpen,
   onClose,
 }: {
-  isAdmin: boolean;
+  role: UserRole;
   username: string;
   isOpen: boolean;
   onClose: () => void;
@@ -125,7 +123,11 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-4">
-        {NAV_ITEMS.filter((item) => !item.admin || isAdmin).map((item) => {
+        {NAV_ITEMS.filter((item) => {
+          if (role === 'owner_panel' || role === 'admin') return true;
+          if (role === 'moderator') return ['/', '/servers', '/activity'].includes(item.href);
+          return item.href === '/servers';
+        }).map((item) => {
           const active =
             item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
           return (

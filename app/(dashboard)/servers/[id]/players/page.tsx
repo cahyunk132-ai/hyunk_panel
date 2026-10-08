@@ -15,13 +15,14 @@ export default async function PlayersPage({ params }: { params: { id: string } }
   const server = await getServerByIdOrUuid(params.id);
   if (!server) notFound();
 
-  // Melihat daftar player = akses console (monitoring); aksi kick/ban/op = console.send.
   const perms = await getEffectivePermissions(user, server);
-  if (!permissionsInclude(perms, 'console')) notFound();
+  const canManagePlayers = permissionsInclude(perms, 'players');
+  if (!canManagePlayers) notFound();
 
-  const canSendCommand = permissionsInclude(perms, 'console.send') || perms.includes('*');
-  // Tambah/ubah/hapus player Bedrock menulis file server → butuh files.edit.
-  const canEditFiles = permissionsInclude(perms, 'files.edit');
+  // Player actions are individually allow-listed by these endpoints. The player
+  // permission does not grant access to the general-purpose console command API.
+  const canSendCommand = canManagePlayers;
+  const canEditFiles = canManagePlayers;
 
   // Bedrock Edition tidak punya playerdata/usercache: tab Players memakai
   // allowlist.json + permissions.json (component terpisah). Tab Java tidak berubah.

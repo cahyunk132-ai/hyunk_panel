@@ -14,7 +14,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const user = await requireUser();
   if (user instanceof Response) return user;
 
-  const checked = await checkPermission(user, 'console', params.id);
+  const checked = await checkPermission(user, 'monitoring', params.id);
   if (checked instanceof Response) return checked;
 
   const resolved = await resolveServerWings(checked.server);

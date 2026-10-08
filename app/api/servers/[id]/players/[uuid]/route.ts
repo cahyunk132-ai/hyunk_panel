@@ -64,7 +64,7 @@ export async function GET(_request: Request, { params }: { params: { id: string;
   const user = await requireUser();
   if (user instanceof Response) return user;
 
-  const checked = await checkPermission(user, 'console', params.id);
+  const checked = await checkPermission(user, 'players', params.id);
   if (checked instanceof Response) return checked;
 
   if (!PLAYER_UUID_RE.test(params.uuid)) {
@@ -98,7 +98,7 @@ export async function POST(request: Request, { params }: { params: { id: string;
   const user = await requireUser();
   if (user instanceof Response) return user;
 
-  const checked = await checkPermission(user, 'console.send', params.id);
+  const checked = await checkPermission(user, 'players', params.id);
   if (checked instanceof Response) return checked;
 
   if (!PLAYER_UUID_RE.test(params.uuid)) {

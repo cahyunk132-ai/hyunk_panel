@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { requireUser } from '@/lib/auth/session';
-import { checkPermission, getServerByIdOrUuid } from '@/lib/auth/rbac';
+import { checkPermission, getServerByIdOrUuid, hasPermission } from '@/lib/auth/rbac';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { resolveServerWings, logActivity } from '@/lib/wings/resolve';
 import type { ServerRow } from '@/types';
@@ -12,8 +12,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const user = await requireUser();
   if (user instanceof Response) return user;
 
-  // Akses baca: permission 'console' sebagai baseline "boleh membuka halaman server".
-  const result = await checkPermission(user, 'console', params.id);
+  // Setiap assignment boleh membuka ringkasan server; fitur di dalamnya tetap
+  // memeriksa permission operasional masing-masing.
+  const result = await checkPermission(user, 'server.read', params.id);
   if (result instanceof Response) return result;
 
   const server = await getServerByIdOrUuid(params.id);
@@ -43,9 +44,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   if (user instanceof Response) return user;
 
   const result = await checkPermission(user, 'settings', params.id);
-  if (result instanceof Response && user.role !== 'admin') return result;
-  const server = result instanceof Response ? await getServerByIdOrUuid(params.id) : result.server;
-  if (!server) return Response.json({ error: 'Server tidak ditemukan' }, { status: 404 });
+  if (result instanceof Response) return result;
+  const server = result.server;
 
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const update: Record<string, unknown> = {};
@@ -61,8 +61,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   ] as const;
   for (const key of editable) {
     if (body[key] !== undefined) {
-      if (key === 'is_suspended' && user.role !== 'admin') {
-        return Response.json({ error: 'Hanya admin yang bisa suspend/unsuspend' }, { status: 403 });
+      if (key === 'is_suspended' && !(await hasPermission(user, 'suspend_server', server.id))) {
+        return Response.json({ error: 'Hanya Owner Panel atau Admin yang bisa suspend/unsuspend' }, { status: 403 });
       }
       update[key] = body[key];
     }
@@ -151,7 +151,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   const user = await requireUser();
   if (user instanceof Response) return user;
-  if (user.role !== 'admin') return Response.json({ error: 'Butuh akses admin' }, { status: 403 });
+  if (!(await hasPermission(user, 'delete_server'))) {
+    return Response.json({ error: 'Hanya Owner Panel atau Admin yang dapat menghapus server' }, { status: 403 });
+  }
 
   const server = await getServerByIdOrUuid(params.id);
   if (!server) return Response.json({ error: 'Server tidak ditemukan' }, { status: 404 });

@@ -12,7 +12,7 @@ export default async function ServerActivityPage({ params }: { params: { id: str
   const user = await getSessionUser();
   if (!user) redirect('/login');
 
-  const result = await checkPermission(user, 'console', params.id);
+  const result = await checkPermission(user, 'audit_log', params.id);
   if (result instanceof Response) notFound();
 
   const service = getSupabaseServiceClient();

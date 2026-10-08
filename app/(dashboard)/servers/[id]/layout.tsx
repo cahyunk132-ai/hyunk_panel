@@ -1,7 +1,12 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
-import { getServerByIdOrUuid, getEffectivePermissions, permissionsInclude } from '@/lib/auth/rbac';
+import {
+  getServerByIdOrUuid,
+  getEffectivePermissions,
+  hasPermission,
+  permissionsInclude,
+} from '@/lib/auth/rbac';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { isBedrockServer } from '@/lib/minecraft/playerdata';
 import { StatusBadge } from '@/components/servers/StatusBadge';
@@ -23,8 +28,12 @@ export default async function ServerLayout({
   const server = await getServerByIdOrUuid(params.id);
   if (!server) notFound();
 
-  const perms = await getEffectivePermissions(user, server);
-  if (perms.length === 0) notFound(); // 404 — jangan bocorkan eksistensi server
+  if (!(await hasPermission(user, 'server.read', server.id))) notFound();
+  const [perms, canViewActivity, canManageSubusers] = await Promise.all([
+    getEffectivePermissions(user, server),
+    hasPermission(user, 'audit_log'),
+    hasPermission(user, 'assign_subuser', server.id),
+  ]);
 
   const service = getSupabaseServiceClient();
   const [{ data: node }, { data: allocation }] = await Promise.all([
@@ -72,6 +81,9 @@ export default async function ServerLayout({
 
       <ServerTabs
         serverId={server.id}
+        permissions={perms}
+        canViewActivity={canViewActivity}
+        canManageSubusers={canManageSubusers}
         showPlugins={server.image.toLowerCase().includes('java')}
         showBedrockAddons={isBedrockServer(server)}
       />

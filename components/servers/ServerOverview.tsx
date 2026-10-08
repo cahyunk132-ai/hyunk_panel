@@ -13,6 +13,11 @@ export function ServerOverview({
   cpuLimit,
   diskMb,
   isSuspended,
+  canStart,
+  canStop,
+  canRestart,
+  canKill,
+  canMonitor,
 }: {
   serverId: string;
   dbStatus: string;
@@ -20,6 +25,11 @@ export function ServerOverview({
   cpuLimit: number;
   diskMb: number | null;
   isSuspended: boolean;
+  canStart: boolean;
+  canStop: boolean;
+  canRestart: boolean;
+  canKill: boolean;
+  canMonitor: boolean;
 }) {
   // Polling ringan untuk status tombol daya (juga me-resync status ke DB tiap 15 dtk).
   // Grafik realtime memakai WebSocket lewat ResourceMonitor.
@@ -38,17 +48,29 @@ export function ServerOverview({
               {isSuspended && <Badge tone="red">Suspended — kontrol dinonaktifkan</Badge>}
             </span>
           }
-          action={<PowerButtons serverId={serverId} status={status} disabled={isSuspended} />}
+          action={
+            <PowerButtons
+              serverId={serverId}
+              status={status}
+              disabled={isSuspended}
+              canStart={canStart}
+              canStop={canStop}
+              canRestart={canRestart}
+              canKill={canKill}
+            />
+          }
         />
       </Card>
 
-      <ResourceMonitor
-        serverId={serverId}
-        dbStatus={status}
-        memoryMb={memoryMb}
-        cpuLimit={cpuLimit}
-        diskMb={diskMb}
-      />
+      {canMonitor && (
+        <ResourceMonitor
+          serverId={serverId}
+          dbStatus={status}
+          memoryMb={memoryMb}
+          cpuLimit={cpuLimit}
+          diskMb={diskMb}
+        />
+      )}
     </div>
   );
 }

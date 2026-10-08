@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth/session';
+import { requireAdmin } from '@/lib/auth/session';
 import { WingsClient } from '@/lib/wings/client';
 import { getNodeById } from '@/lib/wings/resolve';
 
@@ -11,11 +11,8 @@ export const runtime = 'nodejs';
  *  - GET /api/servers         → daftar server + state + utilization live
  */
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const user = await requireUser();
+  const user = await requireAdmin();
   if (user instanceof Response) return user;
-  if (user.role !== 'admin') {
-    return Response.json({ error: 'Butuh akses admin' }, { status: 403 });
-  }
 
   const node = await getNodeById(params.id);
   if (!node) return Response.json({ error: 'Node tidak ditemukan' }, { status: 404 });

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireAdmin, requireUser } from '@/lib/auth/session';
+import { requireAdmin } from '@/lib/auth/session';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { encryptToken } from '@/lib/wings/crypto';
 import { logActivity } from '@/lib/wings/resolve';
@@ -12,7 +12,7 @@ const NODE_PUBLIC_SELECT =
 
 /** GET /api/nodes — daftar node (tanpa token, aman untuk semua user login). */
 export async function GET() {
-  const user = await requireUser();
+  const user = await requireAdmin();
   if (user instanceof Response) return user;
 
   const service = getSupabaseServiceClient();

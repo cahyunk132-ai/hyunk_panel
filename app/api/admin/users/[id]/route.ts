@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 import { requireAdmin } from '@/lib/auth/session';
+import { canAssignRole, isUserRole } from '@/lib/auth/roles';
+import { hasPermission } from '@/lib/auth/rbac';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { logActivity } from '@/lib/wings/resolve';
 
@@ -20,7 +22,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
   const { data: assignments } = await service
     .from('server_users')
-    .select('server_id, permissions, servers(id, uuid, name, status)')
+    .select('server_id, role, permissions, servers(id, uuid, name, status)')
     .eq('user_id', params.id);
 
   const { data: activity } = await service
@@ -33,13 +35,13 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   return Response.json({ user, assignments: assignments ?? [], activity: activity ?? [] });
 }
 
-/** PATCH /api/admin/users/{id} — ubah role / username. Body: { role?, username?, email?, password? } */
+/** PATCH /api/admin/users/{id} — ubah role / username. */
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   const admin = await requireAdmin();
   if (admin instanceof Response) return admin;
 
   const body = (await request.json().catch(() => ({}))) as {
-    role?: string;
+    role?: unknown;
     username?: string;
     email?: string;
     password?: string;
@@ -53,29 +55,43 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     .maybeSingle();
   if (!target) return Response.json({ error: 'User tidak ditemukan' }, { status: 404 });
 
-  if (body.role && body.role !== 'admin' && target.id === admin.id) {
-    return Response.json(
-      { error: 'Tidak bisa menurunkan role diri sendiri. Minta admin lain.' },
-      { status: 400 },
-    );
+  const canManageAdmins = await hasPermission(admin, 'manage_admins');
+  const update: Record<string, unknown> = {};
+
+  if (body.role !== undefined) {
+    if (!isUserRole(body.role)) return Response.json({ error: 'Role tidak valid' }, { status: 400 });
+    const newRole = body.role;
+    const currentRole = target.role as import('@/types').UserRole;
+
+    if (newRole !== currentRole && target.id === admin.id) {
+      return Response.json({ error: 'Tidak bisa mengubah role akun sendiri' }, { status: 400 });
+    }
+    if ((currentRole === 'owner_panel' || currentRole === 'admin' || newRole === 'owner_panel' || newRole === 'admin') && !canManageAdmins) {
+      return Response.json({ error: 'Hanya Owner Panel yang dapat menambah, menghapus, atau mengubah role Admin/Owner Panel' }, { status: 403 });
+    }
+    if (!canAssignRole(admin.role, newRole)) {
+      return Response.json({ error: 'Anda tidak dapat memberikan role yang lebih tinggi dari role Anda' }, { status: 403 });
+    }
+    update.role = newRole;
   }
 
-  const update: Record<string, unknown> = {};
-  if (body.role === 'admin' || body.role === 'user') update.role = body.role;
   if (typeof body.username === 'string' && body.username.trim()) update.username = body.username.trim();
-  if (typeof body.email === 'string' && body.email.trim()) update.email = body.email.trim();
+  if (typeof body.email === 'string' && body.email.trim()) update.email = body.email.trim().toLowerCase();
 
   if (Object.keys(update).length > 0) {
     const { error } = await service.from('users').update(update).eq('id', params.id);
-    if (error) return Response.json({ error: error.message }, { status: 500 });
+    if (error) {
+      const status = error.message.includes('Maksimal 5 Owner Panel') ? 409 : 500;
+      return Response.json({ error: error.message }, { status });
+    }
   }
 
   if (body.email || body.password) {
-    const { error: authErr } = await service.auth.admin.updateUserById(params.id, {
-      ...(body.email ? { email: body.email, email_confirm: true } : {}),
+    const { error: authError } = await service.auth.admin.updateUserById(params.id, {
+      ...(body.email ? { email: body.email.trim().toLowerCase(), email_confirm: true } : {}),
       ...(body.password ? { password: body.password } : {}),
     });
-    if (authErr) return Response.json({ error: authErr.message }, { status: 400 });
+    if (authError) return Response.json({ error: authError.message }, { status: 400 });
   }
 
   await logActivity({
@@ -96,6 +112,13 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   }
 
   const service = getSupabaseServiceClient();
+  const { data: target } = await service.from('users').select('role').eq('id', params.id).maybeSingle();
+  if (!target) return Response.json({ error: 'User tidak ditemukan' }, { status: 404 });
+
+  if ((target.role === 'owner_panel' || target.role === 'admin') && !(await hasPermission(admin, 'manage_admins'))) {
+    return Response.json({ error: 'Hanya Owner Panel yang dapat menghapus Admin atau Owner Panel lain' }, { status: 403 });
+  }
+
   const { error } = await service.auth.admin.deleteUser(params.id);
   if (error) return Response.json({ error: error.message }, { status: 400 });
 

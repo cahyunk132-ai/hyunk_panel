@@ -8,6 +8,7 @@ import { NodeStats } from '@/components/nodes/NodeStats';
 import { NodeAllocations } from '@/components/nodes/NodeAllocations';
 import { StatusBadge } from '@/components/servers/StatusBadge';
 import { NodeAdminActions } from '@/components/nodes/NodeAdminActions';
+import { isPanelAdmin } from '@/lib/auth/roles';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Detail Node' };
@@ -15,6 +16,7 @@ export const metadata = { title: 'Detail Node' };
 export default async function NodeDetailPage({ params }: { params: { id: string } }) {
   const user = await getSessionUser();
   if (!user) redirect('/login');
+  if (!isPanelAdmin(user.role)) redirect('/');
 
   const service = getSupabaseServiceClient();
   const { data: node } = await service
@@ -30,7 +32,7 @@ export default async function NodeDetailPage({ params }: { params: { id: string 
     .eq('node_id', node.id)
     .order('created_at', { ascending: true });
 
-  const isAdmin = user.role === 'admin';
+  const isAdmin = isPanelAdmin(user.role);
 
   return (
     <div className="space-y-6">

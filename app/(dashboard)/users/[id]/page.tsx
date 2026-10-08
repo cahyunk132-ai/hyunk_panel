@@ -3,7 +3,9 @@ import { notFound, redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { UserDetailManager, type Assignment } from '@/components/users/UserDetailManager';
-import { Badge } from '@/components/ui/Badge';
+import { RoleBadge } from '@/components/users/RoleBadge';
+import { isPanelAdmin } from '@/lib/auth/roles';
+import type { UserRole } from '@/types';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Detail User' };
@@ -11,7 +13,7 @@ export const metadata = { title: 'Detail User' };
 export default async function UserDetailPage({ params }: { params: { id: string } }) {
   const user = await getSessionUser();
   if (!user) redirect('/login');
-  if (user.role !== 'admin') redirect('/');
+  if (!isPanelAdmin(user.role)) redirect('/');
 
   const service = getSupabaseServiceClient();
   const { data: target } = await service
@@ -23,13 +25,14 @@ export default async function UserDetailPage({ params }: { params: { id: string 
 
   const { data: rawAssignments } = await service
     .from('server_users')
-    .select('server_id, permissions, servers(id, uuid, name, status)')
+    .select('server_id, role, permissions, servers(id, uuid, name, status)')
     .eq('user_id', params.id);
 
   const assignments: Assignment[] = (rawAssignments ?? []).map((a) => {
     const s = a.servers as { id?: string; uuid?: string; name?: string; status?: string } | null;
     return {
       server_id: a.server_id as string,
+      role: (a.role === 'user' ? 'user' : 'subuser') as 'user' | 'subuser',
       server_name: s?.name ?? '—',
       server_uuid: s?.uuid ?? '—',
       status: s?.status ?? 'offline',
@@ -50,7 +53,7 @@ export default async function UserDetailPage({ params }: { params: { id: string 
         </Link>
         <div className="mt-2 flex items-center gap-3">
           <h1 className="text-xl font-bold">{target.username as string}</h1>
-          <Badge tone={target.role === 'admin' ? 'accent' : 'default'}>{target.role as string}</Badge>
+          <RoleBadge role={target.role as UserRole} />
         </div>
         <p className="mt-0.5 text-sm text-ink-muted">{target.email as string}</p>
       </div>
@@ -58,7 +61,7 @@ export default async function UserDetailPage({ params }: { params: { id: string 
       <UserDetailManager
         userId={target.id as string}
         username={target.username as string}
-        role={target.role as 'admin' | 'user'}
+        role={target.role as UserRole}
         assignments={assignments}
         allServers={(allServers ?? []) as Array<{ id: string; name: string }>}
         isSelf={target.id === user.id}

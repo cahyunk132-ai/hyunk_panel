@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireAdmin, requireUser } from '@/lib/auth/session';
+import { requireAdmin } from '@/lib/auth/session';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { encryptToken } from '@/lib/wings/crypto';
 import { getNodeById, logActivity } from '@/lib/wings/resolve';
@@ -11,7 +11,7 @@ const NODE_PUBLIC_SELECT =
 
 /** GET /api/nodes/{id} — detail node + jumlah server yang terdaftar di panel. */
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  const user = await requireUser();
+  const user = await requireAdmin();
   if (user instanceof Response) return user;
 
   const service = getSupabaseServiceClient();

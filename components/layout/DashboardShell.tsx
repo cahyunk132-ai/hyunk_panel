@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
+import type { UserRole } from '@/types';
 
 export function DashboardShell({
   children,
@@ -14,7 +15,7 @@ export function DashboardShell({
   children: React.ReactNode;
   username: string;
   email: string;
-  role: string;
+  role: UserRole;
 }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -26,7 +27,7 @@ export function DashboardShell({
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar
-        isAdmin={role === 'admin'}
+        role={role}
         username={username}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}

@@ -2,6 +2,7 @@ import 'server-only';
 import { cache } from 'react';
 import type { UserRole } from '@/types';
 import { getSupabaseServerClient, getSupabaseServiceClient } from '@/lib/supabase/server';
+import { isPanelAdmin } from './roles';
 
 export interface SessionUser {
   id: string;
@@ -43,7 +44,12 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
       .select('id, username, email, role')
       .single();
     if (!inserted) return null;
-    return { id: inserted.id, email: inserted.email ?? '', username: inserted.username, role: inserted.role };
+    return {
+      id: inserted.id,
+      email: inserted.email ?? '',
+      username: inserted.username,
+      role: inserted.role as UserRole,
+    };
   }
 
   // Sinkronkan email bila berubah di auth.users.
@@ -67,11 +73,35 @@ export async function requireUser(): Promise<SessionUser | Response> {
   return user;
 }
 
-export async function requireAdmin(): Promise<SessionUser | Response> {
+export async function requireRole(roles: readonly UserRole[]): Promise<SessionUser | Response> {
   const user = await requireUser();
   if (user instanceof Response) return user;
-  if (user.role !== 'admin') {
-    return Response.json({ error: 'Butuh akses admin' }, { status: 403 });
+  if (!roles.includes(user.role)) {
+    return Response.json(
+      { error: `Akses ditolak. Role yang dibutuhkan: ${roles.join(', ')}` },
+      { status: 403 },
+    );
   }
   return user;
+}
+
+/** Owner Panel + Admin guard for panel-management APIs. */
+export async function requireAdmin(): Promise<SessionUser | Response> {
+  const user = await requireRole(['owner_panel', 'admin']);
+  if (user instanceof Response && user.status === 403) {
+    return Response.json({ error: 'Butuh akses Owner Panel atau Admin' }, { status: 403 });
+  }
+  return user;
+}
+
+export async function requireOwnerPanel(): Promise<SessionUser | Response> {
+  const user = await requireRole(['owner_panel']);
+  if (user instanceof Response && user.status === 403) {
+    return Response.json({ error: 'Aksi ini hanya dapat dilakukan Owner Panel' }, { status: 403 });
+  }
+  return user;
+}
+
+export function isPanelAdminUser(user: SessionUser): boolean {
+  return isPanelAdmin(user.role);
 }
