@@ -265,6 +265,19 @@ export class WingsClient {
     await this.request('POST', `/api/servers/${serverUuid}/files/copy`, { location });
   }
 
+  /**
+   * POST /api/servers/{uuid}/files/chmod — { root, files: [{file, mode}] }.
+   * `mode` adalah string oktal (mis. "0755") — wings mem-parse dengan ParseUint base 8
+   * (router/router_server_files.go → postServerChmodFile).
+   */
+  async chmodFiles(
+    serverUuid: string,
+    root: string,
+    files: Array<{ file: string; mode: string }>,
+  ): Promise<void> {
+    await this.request('POST', `/api/servers/${serverUuid}/files/chmod`, { root, files });
+  }
+
   /** POST /api/servers/{uuid}/files/create-directory — { name, path } */
   async createDirectory(serverUuid: string, path: string, name: string): Promise<void> {
     await this.request('POST', `/api/servers/${serverUuid}/files/create-directory`, { name, path });

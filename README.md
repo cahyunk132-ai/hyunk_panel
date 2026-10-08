@@ -41,8 +41,8 @@ Browser ──► /api/... (Next.js API route, serverless) ──► Wings API (
 ### 1. Supabase
 
 1. Buat project baru di [supabase.com](https://supabase.com).
-2. Buka **SQL Editor**, jalankan [`001_initial.sql`](supabase/migrations/001_initial.sql), [`002_role_management.sql`](supabase/migrations/002_role_management.sql), lalu [`003_egg_system.sql`](supabase/migrations/003_egg_system.sql).
-   Migration kedua menambahkan role hierarchy, subuser assignment, batas lima Owner Panel, dan policy RLS berbasis role. Migration ketiga menambahkan Egg, versi, assignment Egg ke node, serta referensi Egg/versi aktif pada server.
+2. Buka **SQL Editor**, jalankan [`001_initial.sql`](supabase/migrations/001_initial.sql), [`002_role_management.sql`](supabase/migrations/002_role_management.sql), [`003_egg_system.sql`](supabase/migrations/003_egg_system.sql), lalu [`004_auto_download.sql`](supabase/migrations/004_auto_download.sql).
+   Migration kedua menambahkan role hierarchy, subuser assignment, batas lima Owner Panel, dan policy RLS berbasis role. Migration ketiga menambahkan Egg, versi, assignment Egg ke node, serta referensi Egg/versi aktif pada server. Migration keempat menambahkan kolom auto-download pada versi Egg (provider, URL template custom, variabel, filename, flag executable).
 3. Buat user pertama: **Authentication → Users → Add user** (email + password).
 4. Jadikan Owner Panel pertama — di SQL Editor:
    ```sql
@@ -216,6 +216,20 @@ Dropdown permission & checkbox Ignore Player Limit di tabel auto-save (PUT) seti
   server lain. Menghapus server otomatis melepas semua port-nya (`assigned_to = NULL`).
 - **Users (admin)** — buat user, ubah role, assign server + permission granular, cabut akses,
   hapus akun.
+- **Egg Manager + Generic Auto Download** — setiap versi Egg dapat memiliki `download_provider`:
+  built-in (**Paper, Purpur, Vanilla, Fabric, Forge, NeoForge, Quilt, Bedrock**) yang URL-nya
+  di-resolve otomatis dari API publik masing-masing (build `latest` atau versi pin via variabel
+  `BUILD`/`MC_VERSION`), atau **Custom URL Template** — owner mendefinisikan URL bebas dengan
+  placeholder `{KEY}` (mis. `https://…/download/{VERSION}/{FILE}`) + tabel key-value variabel,
+  sehingga game/software apapun bisa didukung tanpa mengubah kode. Tombol **Test URL** di Egg
+  Manager me-resolve (tanpa download) via `GET /api/download/resolve` /
+  `GET /api/admin/eggs/{id}/versions/{vid}/test-download`. Di tab **Startup** server muncul info
+  provider + tombol **Download & Install** dengan progress realtime (NDJSON stream:
+  resolving → downloading → uploading → ekstrak/chmod → done); flow **Simpan & Reinstall** juga
+  menjalankan auto download dulu sebelum reinstall Wings. File di-stream langsung dari sumber ke
+  Wings **tanpa buffer di memory** (`POST /api/servers/{id}/download-server-file`), arsip zip
+  Bedrock otomatis diekstrak, dan binary dapat di-chmod +x (`download_executable`). Provider
+  `none` tetap upload manual via File Manager.
 - **Audit log** — halaman khusus admin (`/activity`) dengan filter aksi/server + pagination,
   dan tab **Activity** per server. Semua aksi penting dicatat (power, file edit, admin ops,
   event dari wings) lengkap dengan IP.
@@ -246,12 +260,16 @@ lib/
 supabase/migrations/001_initial.sql
 supabase/migrations/002_role_management.sql
 supabase/migrations/003_egg_system.sql
+supabase/migrations/004_auto_download.sql
 ```
 
 ## Catatan operasional
 
 - **Timeout Vercel**: request API route harus < 60 s (Pro). Semua panggilan wings di repo ini
-  cepat; backup berjalan async di node dan statusnya dilaporkan wings via remote API.
+  cepat; backup berjalan async di node dan statusnya dilaporkan wings via remote API. Endpoint
+  `download-server-file` me-stream file langsung ke Wings (memory aman), tetapi file yang sangat
+  besar di koneksi lambat bisa melebihi 60 detik di Hobby plan — gunakan upload manual via File
+  Manager sebagai fallback untuk kasus itu.
 - **Rotasi token node**: update di UI (Nodes → edit) atau `PATCH /api/nodes/{id}` dengan
   `{ token }` — langsung dienkripsi ulang.
 - **Server baru**: port wajib dipilih dari allocation node (dropdown hanya berisi port

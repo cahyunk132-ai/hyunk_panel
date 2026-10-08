@@ -3,6 +3,7 @@ import { requireUser } from '@/lib/auth/session';
 import { checkPermission } from '@/lib/auth/rbac';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { normalizeEnvOverrides } from '@/lib/eggs/validation';
+import type { DownloadProvider } from '@/types';
 
 export const runtime = 'nodejs';
 
@@ -15,6 +16,9 @@ interface EggVersionRecord {
   env_overrides: unknown;
   is_recommended: boolean;
   sort_order: number;
+  download_provider: DownloadProvider | null;
+  download_filename: string | null;
+  download_executable: boolean | null;
 }
 
 interface EggRecord {
@@ -56,7 +60,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     service
       .from('eggs')
       .select(
-        'id, name, description, docker_image, startup, config_stop, config_startup, env_variables, features, egg_versions(id, egg_id, name, minecraft_version, docker_image, env_overrides, is_recommended, sort_order)',
+        'id, name, description, docker_image, startup, config_stop, config_startup, env_variables, features, egg_versions(id, egg_id, name, minecraft_version, docker_image, env_overrides, is_recommended, sort_order, download_provider, download_filename, download_executable)',
       )
       .order('name', { ascending: true }),
   ]);
