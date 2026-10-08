@@ -54,6 +54,11 @@ interface ServerProfile {
   stripAnsi: boolean;
 }
 
+export interface EggProcessConfig {
+  config_stop?: string | null;
+  config_startup?: Record<string, unknown> | null;
+}
+
 /** Profil stop/done detection berdasar image & startup command. */
 export function detectServerProfile(server: Pick<ServerRow, 'image' | 'startup' | 'env'>): ServerProfile {
   const image = server.image.toLowerCase();
@@ -105,15 +110,43 @@ export function buildEnvironment(
   return env;
 }
 
-export function buildProcessConfiguration(server: ServerRow): RemoteProcessConfiguration {
+function textList(value: unknown): string[] {
+  if (typeof value === 'string') return value ? [value] : [];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string');
+}
+
+function stopConfiguration(value: string | null | undefined, fallback: ServerProfile['stop']) {
+  const command = value?.trim();
+  if (!command) return fallback;
+  if (command.startsWith('^')) {
+    const signal = command.slice(1).toUpperCase();
+    const signals: Record<string, string> = {
+      C: 'SIGINT',
+      D: 'SIGQUIT',
+      Z: 'SIGTSTP',
+    };
+    return { type: 'signal' as const, value: signals[signal] ?? 'SIGTERM' };
+  }
+  return { type: 'command' as const, value: command };
+}
+
+export function buildProcessConfiguration(
+  server: ServerRow,
+  eggConfig?: EggProcessConfig | null,
+): RemoteProcessConfiguration {
   const profile = detectServerProfile(server);
+  const startupConfig = eggConfig?.config_startup ?? {};
+  const done = textList(startupConfig.done);
+  const interactions = textList(startupConfig.user_interaction ?? startupConfig.userInteraction);
+  const stripAnsi = typeof startupConfig.strip_ansi === 'boolean' ? startupConfig.strip_ansi : profile.stripAnsi;
   return {
     startup: {
-      done: profile.done,
-      user_interaction: [],
-      strip_ansi: profile.stripAnsi,
+      done: done.length > 0 ? done : profile.done,
+      user_interaction: interactions,
+      strip_ansi: stripAnsi,
     },
-    stop: profile.stop,
+    stop: stopConfiguration(eggConfig?.config_stop, profile.stop),
     configs: [],
   };
 }

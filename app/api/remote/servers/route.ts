@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { authenticateWings } from '@/lib/remote/auth';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
-import { buildProcessConfiguration, buildServerSettings } from '@/lib/remote/config';
+import { buildProcessConfiguration, buildServerSettings, type EggProcessConfig } from '@/lib/remote/config';
 import type { AllocationRow, ServerRow } from '@/types';
 
 export const runtime = 'nodejs';
@@ -34,15 +34,22 @@ export async function GET(request: NextRequest) {
     .map((s) => s.allocation_id)
     .filter((v): v is string => typeof v === 'string');
   const serverIds = servers.map((s) => s.id);
-  const [{ data: primaryRows }, { data: assignedRows }] = await Promise.all([
+  const eggIds = Array.from(new Set(servers.map((server) => server.egg_id).filter((id): id is string => Boolean(id))));
+  const [{ data: primaryRows }, { data: assignedRows }, { data: eggConfigRows }] = await Promise.all([
     allocationIds.length
       ? service.from('allocations').select('*').in('id', allocationIds)
       : Promise.resolve({ data: [] as AllocationRow[] }),
     serverIds.length
       ? service.from('allocations').select('*').in('assigned_to', serverIds)
       : Promise.resolve({ data: [] as AllocationRow[] }),
+    eggIds.length
+      ? service.from('eggs').select('id, config_stop, config_startup').in('id', eggIds)
+      : Promise.resolve({ data: [] as Array<{ id: string } & EggProcessConfig> }),
   ]);
   const primaryMap = new Map((primaryRows ?? []).map((a) => [a.id, a as AllocationRow]));
+  const eggConfigById = new Map<string, EggProcessConfig>(
+    (eggConfigRows ?? []).map((row) => [row.id as string, row as EggProcessConfig]),
+  );
   const assignedMap = new Map<string, AllocationRow[]>();
   for (const allocation of (assignedRows ?? []) as AllocationRow[]) {
     if (!allocation.assigned_to) continue;
@@ -59,7 +66,10 @@ export async function GET(request: NextRequest) {
     return {
       uuid: server.uuid,
       settings: buildServerSettings(server, primary, node.uuid, assignedAllocations),
-      process_configuration: buildProcessConfiguration(server),
+      process_configuration: buildProcessConfiguration(
+        server,
+        server.egg_id ? eggConfigById.get(server.egg_id) : undefined,
+      ),
     };
   });
 

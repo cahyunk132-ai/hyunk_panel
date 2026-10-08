@@ -89,9 +89,43 @@ export interface ServerRow {
   image: string;
   startup: string;
   env: Record<string, string>;
+  /** Local Egg template selection; runtime configuration remains image/startup/env. */
+  egg_id?: string | null;
+  egg_version_id?: string | null;
   status: ServerStatus;
   is_suspended: boolean;
   created_at: string;
+}
+
+export interface EggRow {
+  id: string;
+  name: string;
+  description: string | null;
+  docker_image: string;
+  startup: string;
+  config_stop: string | null;
+  config_startup: Record<string, unknown>;
+  env_variables: unknown[];
+  features: string[];
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface EggVersionRow {
+  id: string;
+  egg_id: string;
+  name: string;
+  minecraft_version: string | null;
+  docker_image: string | null;
+  env_overrides: Record<string, string>;
+  is_recommended: boolean;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface NodeEggRow {
+  node_id: string;
+  egg_id: string;
 }
 
 export interface ServerUserRow {

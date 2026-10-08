@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { authenticateWings } from '@/lib/remote/auth';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
-import { buildProcessConfiguration, buildServerSettings } from '@/lib/remote/config';
+import { buildProcessConfiguration, buildServerSettings, type EggProcessConfig } from '@/lib/remote/config';
 import type { AllocationRow, ServerRow } from '@/types';
 
 export const runtime = 'nodejs';
@@ -29,16 +29,19 @@ export async function GET(request: NextRequest, { params }: { params: { uuid: st
   }
 
   const typed = server as ServerRow;
-  const [{ data: primaryAllocation }, { data: assignedAllocations }] = await Promise.all([
+  const [{ data: primaryAllocation }, { data: assignedAllocations }, { data: eggProcessConfig }] = await Promise.all([
     typed.allocation_id
       ? service.from('allocations').select('*').eq('id', typed.allocation_id).maybeSingle()
       : Promise.resolve({ data: null } as const),
     service.from('allocations').select('id, ip, port').eq('assigned_to', typed.id).eq('node_id', node.id),
+    typed.egg_id
+      ? service.from('eggs').select('config_stop, config_startup').eq('id', typed.egg_id).maybeSingle()
+      : Promise.resolve({ data: null } as const),
   ]);
   const allocation = (primaryAllocation as AllocationRow | null) ?? null;
 
   return Response.json({
     settings: buildServerSettings(typed, allocation, node.uuid, assignedAllocations ?? []),
-    process_configuration: buildProcessConfiguration(typed),
+    process_configuration: buildProcessConfiguration(typed, eggProcessConfig as EggProcessConfig | null),
   });
 }

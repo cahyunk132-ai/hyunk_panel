@@ -9,6 +9,7 @@ import {
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { ServerSettings } from '@/components/servers/ServerSettings';
 import { SubuserManagement } from '@/components/servers/SubuserManagement';
+import { StartupChanger } from '@/components/eggs/StartupChanger';
 import { isPanelAdmin } from '@/lib/auth/roles';
 import type { AllocationRow } from '@/types';
 
@@ -21,23 +22,24 @@ export default async function SettingsPage({ params }: { params: { id: string } 
 
   const server = await getServerByIdOrUuid(params.id);
   if (!server) notFound();
+  if (!(await hasPermission(user, 'server.read', server.id))) notFound();
   const [perms, canManageSubusers] = await Promise.all([
     getEffectivePermissions(user, server),
     hasPermission(user, 'assign_subuser', server.id),
   ]);
   const canEditSettings = permissionsInclude(perms, 'settings');
-  if (!canEditSettings && !canManageSubusers) notFound();
 
   if (!canEditSettings) {
     return (
       <div className="space-y-4">
         <div>
-          <h2 className="text-lg font-semibold">Manajemen Subuser</h2>
+          <h2 className="text-lg font-semibold">Server settings</h2>
           <p className="mt-0.5 text-sm text-ink-muted">
-            Kelola akses terbatas untuk server {server.name}.
+            Lihat Egg dan versi aktif server {server.name}.
           </p>
         </div>
-        <SubuserManagement serverId={server.id} />
+        <StartupChanger serverId={server.id} />
+        {canManageSubusers && <SubuserManagement serverId={server.id} />}
       </div>
     );
   }
@@ -49,6 +51,7 @@ export default async function SettingsPage({ params }: { params: { id: string } 
 
   return (
     <div className="space-y-4">
+      <StartupChanger serverId={server.id} />
       <ServerSettings
         server={server}
         isAdmin={isPanelAdmin(user.role)}

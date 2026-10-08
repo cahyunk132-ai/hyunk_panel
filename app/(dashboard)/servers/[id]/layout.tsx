@@ -29,10 +29,9 @@ export default async function ServerLayout({
   if (!server) notFound();
 
   if (!(await hasPermission(user, 'server.read', server.id))) notFound();
-  const [perms, canViewActivity, canManageSubusers] = await Promise.all([
+  const [perms, canViewActivity] = await Promise.all([
     getEffectivePermissions(user, server),
     hasPermission(user, 'audit_log'),
-    hasPermission(user, 'assign_subuser', server.id),
   ]);
 
   const service = getSupabaseServiceClient();
@@ -83,7 +82,6 @@ export default async function ServerLayout({
         serverId={server.id}
         permissions={perms}
         canViewActivity={canViewActivity}
-        canManageSubusers={canManageSubusers}
         showPlugins={server.image.toLowerCase().includes('java')}
         showBedrockAddons={isBedrockServer(server)}
       />
