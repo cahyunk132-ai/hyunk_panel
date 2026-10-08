@@ -28,16 +28,17 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
     >
+      {/* max-h + flex-col: header tetap terlihat, body yang di-scroll (bukan terpotong viewport). */}
       <div
-        className={`fade-in-up w-full ${wide ? 'max-w-4xl' : 'max-w-lg'} rounded-xl border border-line bg-base-850 shadow-glow`}
+        className={`fade-in-up my-auto flex max-h-[90vh] w-full ${wide ? 'max-w-4xl' : 'max-w-lg'} flex-col rounded-xl border border-line bg-base-850 shadow-glow`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-line-soft px-5 py-4">
+        <div className="flex shrink-0 items-center justify-between border-b border-line-soft px-5 py-4">
           <h3 className="text-sm font-semibold">{title}</h3>
           <button
             onClick={onClose}
@@ -49,7 +50,7 @@ export function Modal({
             </svg>
           </button>
         </div>
-        <div className="px-5 py-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
       </div>
     </div>
   );
