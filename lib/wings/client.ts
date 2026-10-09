@@ -11,6 +11,7 @@
  */
 
 import { decryptToken } from './crypto';
+import { createBackupDownloadToken } from './jwt';
 import type {
   WingsFileStat,
   WingsResourceUsage,
@@ -324,6 +325,33 @@ export class WingsClient {
   async restoreBackup(serverUuid: string, backupUuid: string, truncate = false): Promise<void> {
     const qs = truncate ? '?truncate=true' : '';
     await this.request('POST', `/api/servers/${serverUuid}/backup/${backupUuid}/restore${qs}`);
+  }
+
+  /**
+   * GET /download/backup?token= — response body mentah untuk di-stream
+   * (auto backup ke cloud storage; file bisa >1GB, jangan di-buffer).
+   * Mengembalikan Response apa adanya — pemanggil wajib memeriksa res.body.
+   */
+  async downloadBackupStream(
+    serverUuid: string,
+    backupUuid: string,
+    userUuid: string,
+    ttlSeconds = 900,
+  ): Promise<Response> {
+    const token = createBackupDownloadToken(
+      { nodeSecret: this.token, serverUuid, userUuid },
+      backupUuid,
+      ttlSeconds,
+    );
+    const res = await fetch(this.downloadBackupUrl(token), { cache: 'no-store' });
+    if (!res.ok || !res.body) {
+      const text = await res.text().catch(() => '');
+      throw new WingsError(
+        res.status,
+        `Wings download backup → ${res.status}: ${text.slice(0, 300)}`,
+      );
+    }
+    return res;
   }
 
   // ── Lifecycle server ─────────────────────────────────────────────────────

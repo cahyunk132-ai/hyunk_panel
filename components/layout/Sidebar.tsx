@@ -9,6 +9,8 @@ interface NavItem {
   href: string;
   label: string;
   icon: React.ReactNode;
+  /** Hanya Owner Panel & Admin (section panel management). */
+  adminOnly?: boolean;
 }
 
 const iconProps = {
@@ -46,12 +48,34 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    href: '/storage',
+    label: 'Storage',
+    icon: (
+      <svg {...iconProps}>
+        <path d="M7 18a4.5 4.5 0 0 1-.4-8.98A6 6 0 0 1 18.3 10.6 3.75 3.75 0 0 1 17.75 18H7Z" />
+      </svg>
+    ),
+  },
+  {
     href: '/admin/eggs',
     label: 'Egg Manager',
+    adminOnly: true,
     icon: (
       <svg {...iconProps}>
         <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" />
         <path d="m4.5 7.7 7.5 4.4 7.5-4.4M12 12.1V21" />
+      </svg>
+    ),
+  },
+  {
+    href: '/admin/backups',
+    label: 'Auto Backups',
+    adminOnly: true,
+    icon: (
+      <svg {...iconProps}>
+        <path d="M4 5h16v11H4z" />
+        <path d="M4 9h16M8 3v4M16 3v4" />
+        <path d="M9 14.5 11 16l4-4" />
       </svg>
     ),
   },
@@ -134,6 +158,9 @@ export function Sidebar({
 
       <nav className="flex-1 space-y-1 px-3 py-4">
         {NAV_ITEMS.filter((item) => {
+          // Storage untuk semua role (connect storage = milik user sendiri).
+          if (item.href === '/storage') return true;
+          if (item.adminOnly) return role === 'owner_panel' || role === 'admin';
           if (role === 'owner_panel' || role === 'admin') return true;
           if (role === 'moderator') return ['/', '/servers', '/activity'].includes(item.href);
           return item.href === '/servers';
