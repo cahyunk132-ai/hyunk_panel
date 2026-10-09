@@ -41,8 +41,8 @@ Browser ──► /api/... (Next.js API route, serverless) ──► Wings API (
 ### 1. Supabase
 
 1. Buat project baru di [supabase.com](https://supabase.com).
-2. Buka **SQL Editor**, jalankan [`001_initial.sql`](supabase/migrations/001_initial.sql), [`002_role_management.sql`](supabase/migrations/002_role_management.sql), [`003_egg_system.sql`](supabase/migrations/003_egg_system.sql), lalu [`004_auto_download.sql`](supabase/migrations/004_auto_download.sql).
-   Migration kedua menambahkan role hierarchy, subuser assignment, batas lima Owner Panel, dan policy RLS berbasis role. Migration ketiga menambahkan Egg, versi, assignment Egg ke node, serta referensi Egg/versi aktif pada server. Migration keempat menambahkan kolom auto-download pada versi Egg (provider, URL template custom, variabel, filename, flag executable).
+2. Buka **SQL Editor**, jalankan [`001_initial.sql`](supabase/migrations/001_initial.sql), [`002_role_management.sql`](supabase/migrations/002_role_management.sql), [`003_egg_system.sql`](supabase/migrations/003_egg_system.sql), [`004_auto_download.sql`](supabase/migrations/004_auto_download.sql), lalu [`005_auto_backup.sql`](supabase/migrations/005_auto_backup.sql).
+   Migration kedua menambahkan role hierarchy, subuser assignment, batas lima Owner Panel, dan policy RLS berbasis role. Migration ketiga menambahkan Egg, versi, assignment Egg ke node, serta referensi Egg/versi aktif pada server. Migration keempat menambahkan kolom auto-download pada versi Egg (provider, URL template custom, variabel, filename, flag executable). Migration kelima menambahkan **Auto Backup System**: tabel `storage_providers`, `backup_schedules`, dan `backup_logs` beserta RLS-nya.
 3. Buat user pertama: **Authentication → Users → Add user** (email + password).
 4. Jadikan Owner Panel pertama — di SQL Editor:
    ```sql
@@ -61,6 +61,11 @@ Salin `.env.local.example` → `.env.local` (lokal) atau isi di **Vercel → Set
 | `WINGS_TOKEN_ENCRYPTION_KEY` | hasil `openssl rand -hex 32` |
 | `WINGS_SEED_NODE_TOKEN` | token Wings node existing (dari `/etc/pterodactyl/config.yml` di node, field `token`) |
 | `NEXT_PUBLIC_APP_URL` | `https://panel.wangstore.web.id` |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth Google Drive (auto backup) — lihat [Auto Backup](#auto-backup-system-cloud-storage) |
+| `DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` | OAuth Dropbox (auto backup) |
+| `ONEDRIVE_CLIENT_ID` / `ONEDRIVE_CLIENT_SECRET` | OneDrive — **coming soon** (UI sudah ada, tombol disabled) |
+| `STORAGE_TOKEN_ENCRYPTION_KEY` | enkripsi kredensial cloud storage (AES-256-GCM), `openssl rand -hex 32` |
+| `CRON_SECRET` | secret Vercel Cron (`Authorization: Bearer`), `openssl rand -hex 32` |
 
 > `WINGS_SEED_NODE_TOKEN` hanya dibaca sekali oleh endpoint seed (dienkripsi lalu disimpan).
 > Setelah seed sukses, boleh dikosongkan/dihapus dari env.
@@ -233,6 +238,129 @@ Dropdown permission & checkbox Ignore Player Limit di tabel auto-save (PUT) seti
 - **Audit log** — halaman khusus admin (`/activity`) dengan filter aksi/server + pagination,
   dan tab **Activity** per server. Semua aksi penting dicatat (power, file edit, admin ops,
   event dari wings) lengkap dengan IP.
+- **Auto Backup + Cloud Storage** — jadwal backup per server (hourly/daily/weekly) yang
+  dieksekusi Vercel Cron: Wings membuat backup di node → panel men-download secara streaming →
+  upload ke cloud storage user (Google Drive, Dropbox, S3-compatible, SFTP, WebDAV) → retention
+  otomatis. Lihat [Auto Backup System](#auto-backup-system-cloud-storage).
+
+## Auto Backup System (Cloud Storage)
+
+Fitur backup otomatis terjadwal yang mengirim backup server ke **cloud storage milik user**.
+
+### Alur
+
+```
+Admin/Moderator set jadwal backup per server (tab Backups → Auto Backup Schedule)
+        ↓
+Vercel Cron (hourly, lihat vercel.json) → GET /api/cron/backup (Bearer CRON_SECRET)
+        ↓
+Wings membuat file backup di node (adapter "wings")
+        ↓
+Panel menunggu laporan hasil dari Wings (POST /api/remote/backups/{uuid})
+        ↓
+Panel download backup dari Wings — STREAMING (signed JWT, file bisa >1GB)
+        ↓
+Upload ke cloud storage user — STREAMING (tidak ada buffer penuh di memory)
+        ↓
+Backup di node dihapus (sudah aman di cloud) + dicatat di backup_logs
+        ↓
+Retention: backup cloud terlama dihapus otomatis bila melebihi limit
+```
+
+### Setup
+
+1. **Migration** — jalankan [`005_auto_backup.sql`](supabase/migrations/005_auto_backup.sql)
+   (tabel `storage_providers`, `backup_schedules`, `backup_logs` + RLS).
+2. **Environment variables** (Vercel → Settings → Environment Variables):
+   - `STORAGE_TOKEN_ENCRYPTION_KEY` — `openssl rand -hex 32`. Dipakai mengenkripsi AES-256-GCM
+     access token / refresh token OAuth serta secret di config (S3 `secret_key`, SFTP/WebDAV
+     `password`). **Token tidak pernah tersimpan plaintext dan tidak pernah tampil di UI/API.**
+   - `CRON_SECRET` — `openssl rand -hex 32`. Vercel Cron mengirimnya sebagai
+     `Authorization: Bearer {CRON_SECRET}`; handler memverifikasi dengan timing-safe compare.
+   - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — Google Cloud Console → Credentials →
+     OAuth Client (Web). **Authorized redirect URI**:
+     `{NEXT_PUBLIC_APP_URL}/api/auth/storage/callback/google`
+   - `DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` — Dropbox App Console. **Redirect URI**:
+     `{NEXT_PUBLIC_APP_URL}/api/auth/storage/callback/dropbox`
+   - `ONEDRIVE_CLIENT_ID` / `ONEDRIVE_CLIENT_SECRET` — placeholder; fitur OneDrive **coming soon**
+     (tombol di UI sudah ada tapi disabled sampai kredensial tersedia).
+3. **Vercel Cron** — sudah terdaftar di [`vercel.json`](vercel.json):
+   `GET /api/cron/backup` setiap jam (`0 * * * *`). **Catatan:** Vercel Cron dengan interval
+   **< 1 hari butuh Vercel Pro**; jadwal hourly seperti ini jalan di semua plan, tetapi
+   proses backup (download + upload file besar) bisa melebihi limit durasi function Hobby —
+   gunakan **Vercel Pro** (`maxDuration = 300` sudah di-set di route terkait).
+
+### Pemakaian
+
+- **Hubungkan storage** — halaman **Storage** di sidebar (semua role; storage selalu milik
+  user yang menghubungkan): tombol **+ Connect Storage** →
+  - **Google Drive** / **Dropbox** → OAuth (redirect, token tersimpan terenkripsi).
+  - **OneDrive** → coming soon (disabled).
+  - **S3 Compatible** → form endpoint/bucket/region/access key/secret key
+    (AWS S3, Cloudflare R2, Backblaze B2, MinIO — SigV4 path-style, tanpa AWS SDK).
+  - **SFTP** → form host/port/username/password/remote path (`ssh2-sftp-client`).
+  - **WebDAV** → form URL/username/password.
+  - Per provider: tombol **Test** (cek koneksi; token OAuth yang expired di-refresh otomatis)
+    dan **Disconnect** (ditolak bila masih dipakai jadwal — badge "Used by N servers").
+- **Atur jadwal** — tab **Backups** di server → section **Auto Backup Schedule**:
+  toggle aktif, interval (Hourly/Daily/Weekly), jam eksekusi, hari (weekly), storage provider,
+  retention (1–20), ignore files. Tombol **Run now** menjalankan pipeline langsung.
+- **Riwayat** — section **Backup History** di tab Backups: waktu, ukuran, provider, status,
+  dan link file di cloud.
+- **Admin** — halaman **Auto Backups** (`/admin/backups`, Owner Panel & Admin): overview semua
+  jadwal + status terakhir + tombol **Force run**.
+
+### Konvensi penyimpanan di cloud
+
+- Folder tujuan: `Hyunk Panel Backups/{server_name}/` (dibuat otomatis bila belum ada).
+- Nama file: `{server_name}-{YYYY-MM-DD_HH-mm}.tar.gz` (waktu server/UTC).
+- **Retention**: setelah upload sukses, backup cloud terlama dihapus otomatis bila jumlah
+  backup `done` melebihi nilai retention jadwal.
+- **Pembersihan node**: setelah upload ke cloud sukses, backup di node dihapus
+  (`DELETE /api/servers/{uuid}/backup/{uuid}`) agar disk node tidak penuh. Bila upload gagal,
+  backup di node **dipertahankan** dan bisa didownload manual dari tab Backups.
+- **Streaming**: download Wings → upload cloud dialirkan langsung (web `ReadableStream`);
+  tidak ada buffer file penuh di memory. Dropbox memakai upload session (chunk 48MB) untuk
+  file >150MB; S3 memakai `UNSIGNED-PAYLOAD` (HTTPS); GDrive upload media via PATCH.
+- **Token refresh**: sebelum upload, `token_expires_at` dicek; bila expired, refresh token
+  dipakai menukar access token baru (Google: `oauth2.googleapis.com/token`,
+  Dropbox: `api.dropboxapi.com/oauth2/token`) dan token baru disimpan kembali (terenkripsi).
+
+### Permission
+
+| Aksi | Role |
+|---|---|
+| Connect/disconnect storage, test koneksi | semua role (storage milik sendiri) |
+| Set/ubah/hapus jadwal backup, Run now | `owner_panel`, `admin`, `moderator` (permission `backup.schedule`) |
+| Lihat jadwal & backup logs | sesuai akses server (permission `backups`) |
+| Admin overview + force run | `owner_panel`, `admin` |
+
+### API routes
+
+| Endpoint | Fungsi |
+|---|---|
+| `GET /api/auth/storage/connect?provider=gdrive\|dropbox\|onedrive` | mulai OAuth flow (redirect ke provider) |
+| `GET /api/auth/storage/callback/google` | callback Google → simpan token terenkripsi |
+| `GET /api/auth/storage/callback/dropbox` | callback Dropbox → simpan token terenkripsi |
+| `GET /api/auth/storage/callback/onedrive` | placeholder 501 (coming soon) |
+| `GET /api/storage/providers` | list provider user (+ "Used by N servers") |
+| `POST /api/storage/providers/s3` | tambah S3-compatible manual |
+| `POST /api/storage/providers/sftp` | tambah SFTP manual |
+| `POST /api/storage/providers/webdav` | tambah WebDAV manual |
+| `DELETE /api/storage/providers/[id]` | disconnect provider (409 bila masih dipakai) |
+| `GET /api/storage/providers/[id]/test` | test koneksi provider |
+| `GET /api/servers/[id]/backup-schedule` | jadwal + daftar provider user |
+| `POST /api/servers/[id]/backup-schedule` | set/ubah jadwal (upsert, 1 per server) |
+| `DELETE /api/servers/[id]/backup-schedule` | hapus jadwal |
+| `GET /api/servers/[id]/backup-logs` | history auto backup (maks 50) |
+| `POST /api/servers/[id]/backup-now` | jalankan pipeline backup sekarang |
+| `GET /api/cron/backup` | handler Vercel Cron (Bearer `CRON_SECRET`) |
+| `GET /api/admin/backups` | overview semua jadwal (Owner Panel & Admin) |
+| `POST /api/admin/backups/run` | force run satu jadwal (body `{ schedule_id }`) |
+
+> Bergantung pada Remote API aktif: Wings melaporkan hasil backup ke
+> `POST /api/remote/backups/{uuid}` (sudah ada). Tanpa itu, job menunggu sampai timeout
+> (240 d) lalu tercatat `failed` di backup_logs.
 
 ## Batasan yang disengaja (mengikuti brief)
 
@@ -257,10 +385,14 @@ lib/
   remote/       → auth.ts (validasi wings→panel), config.ts (settings/process builder)
   supabase/     → client browser/server/service
   auth/         → session.ts, rbac.ts (checkPermission)
+  storage/      → auto backup: crypto.ts (enkripsi kredensial), schedule.ts (next_run_at),
+                  tokens.ts (refresh OAuth), gdrive/dropbox/s3/sftp/webdav.ts (upload
+                  streaming), backupJob.ts (pipeline cron/manual/admin)
 supabase/migrations/001_initial.sql
 supabase/migrations/002_role_management.sql
 supabase/migrations/003_egg_system.sql
 supabase/migrations/004_auto_download.sql
+supabase/migrations/005_auto_backup.sql
 ```
 
 ## Catatan operasional

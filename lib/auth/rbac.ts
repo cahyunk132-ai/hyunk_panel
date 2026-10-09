@@ -15,6 +15,7 @@ const MODERATOR_PERMISSIONS: ServerPermission[] = [
   'files.edit',
   'backups',
   'backup.restore',
+  'backup.schedule',
   'players',
 ];
 
@@ -37,6 +38,7 @@ const MODERATOR_SERVER_ACTIONS = new Set([
   'files.edit',
   'backups',
   'backup.restore',
+  'backup.schedule',
   'players',
 ]);
 

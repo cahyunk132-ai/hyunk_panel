@@ -25,6 +25,7 @@ export type ServerPermission =
   | 'backups'
   | 'backup.restore'
   | 'backups.delete'
+  | 'backup.schedule'
   | 'players'
   | 'monitoring'
   | 'settings';
@@ -172,6 +173,98 @@ export interface BackupRow {
   is_successful: boolean | null;
   checksum: string | null;
   created_at: string;
+}
+
+// ─── Auto Backup System (migration 005) ──────────────────────────────────────
+
+export type StorageProviderType = 'gdrive' | 'dropbox' | 'onedrive' | 's3' | 'sftp' | 'webdav';
+
+/** Config S3 (secret_key sudah terenkripsi saat dibaca dari DB). */
+export interface S3StorageConfig {
+  bucket: string;
+  region: string;
+  access_key: string;
+  secret_key: string;
+  endpoint?: string;
+}
+
+/** Config SFTP (password sudah terenkripsi saat dibaca dari DB). */
+export interface SftpStorageConfig {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  path: string;
+}
+
+/** Config WebDAV (password sudah terenkripsi saat dibaca dari DB). */
+export interface WebdavStorageConfig {
+  url: string;
+  username: string;
+  password: string;
+}
+
+export interface StorageProviderRow {
+  id: string;
+  user_id: string;
+  provider: StorageProviderType;
+  name: string;
+  /** Terenkripsi AES-256-GCM — jangan pernah dikirim ke browser. */
+  access_token: string | null;
+  /** Terenkripsi AES-256-GCM — jangan pernah dikirim ke browser. */
+  refresh_token: string | null;
+  token_expires_at: string | null;
+  config: Record<string, unknown>;
+  is_active: boolean;
+  created_at: string;
+}
+
+/** Provider tanpa kredensial — aman dikirim ke browser. */
+export interface PublicStorageProvider {
+  id: string;
+  provider: StorageProviderType;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+  /** Ringkasan config tanpa secret (mis. bucket/region/endpoint S3, host SFTP). */
+  config_public: Record<string, unknown>;
+  /** Jumlah jadwal backup yang memakai provider ini. */
+  schedules_count: number;
+}
+
+export type BackupInterval = 'hourly' | 'daily' | 'weekly';
+
+export interface BackupScheduleRow {
+  id: string;
+  server_id: string;
+  storage_provider_id: string;
+  is_enabled: boolean;
+  interval: BackupInterval;
+  time_of_day: string | null;
+  day_of_week: number | null;
+  retention: number;
+  ignore_files: string | null;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export type BackupLogStatus = 'pending' | 'creating' | 'uploading' | 'done' | 'failed';
+
+export interface BackupLogRow {
+  id: string;
+  server_id: string;
+  schedule_id: string | null;
+  backup_uuid: string | null;
+  storage_provider_id: string | null;
+  storage_file_id: string | null;
+  storage_file_name: string | null;
+  size_bytes: number | null;
+  status: BackupLogStatus | null;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
 }
 
 // ─── API payloads ────────────────────────────────────────────────────────────

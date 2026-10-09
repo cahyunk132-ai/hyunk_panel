@@ -8,6 +8,9 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: '2mb',
     },
+    // ssh2 (SFTP storage) punya optional native dependency (cpu-features) yang
+    // tidak bisa di-bundle — biarkan di node_modules saat runtime serverless.
+    serverComponentsExternalPackages: ['ssh2', 'ssh2-sftp-client'],
   },
 };
 
