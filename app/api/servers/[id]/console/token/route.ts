@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { requireUser } from '@/lib/auth/session';
-import { checkPermission, getEffectivePermissions } from '@/lib/auth/rbac';
+import { checkPermission } from '@/lib/auth/rbac';
 import { resolveServerWings } from '@/lib/wings/resolve';
 import { createWebsocketToken } from '@/lib/wings/jwt';
 import { WS_TOKEN_TTL_SECONDS } from '@/lib/utils/constants';
@@ -27,9 +27,11 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   const resolved = await resolveServerWings(checked.server);
   if (resolved instanceof Response) return resolved;
 
-  // Permission di JWT dibatasi sesuai permission user di panel.
-  const perms = await getEffectivePermissions(user, checked.server);
-  const jwtPermissions = perms.includes('*') ? ['*'] : perms;
+  // Wings hanya menerima ['*'] pada field permissions JWT websocket — array
+  // permission spesifik (mis. ['console', 'start']) langsung ditolak dengan
+  // "jwt error". Pembatasan akses tetap dijaga oleh checkPermission('console')
+  // di atas, jadi user tanpa permission console tidak pernah sampai ke sini.
+  const jwtPermissions = ['*'];
 
   let token: string;
   try {
