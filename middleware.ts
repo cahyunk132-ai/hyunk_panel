@@ -4,6 +4,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 /**
  * Auth guard untuk seluruh dashboard + API panel.
  * - /login             → publik (redirect ke / bila sudah login)
+ * - /privacy           → publik (Privacy Policy, boleh diakses tanpa login)
  * - /api/remote/*      → publik (Wings; auth pakai Bearer token node di handler)
  * - /api/auth/*        → publik (termasuk OAuth callback cloud storage)
  * - /api/cron/*        → publik (Vercel Cron; divalidasi via CRON_SECRET di handler)
@@ -16,6 +17,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (
+    pathname === '/privacy' ||
     pathname.startsWith('/api/remote') ||
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/api/cron')
