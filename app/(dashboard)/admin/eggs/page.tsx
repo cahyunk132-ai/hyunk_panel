@@ -9,7 +9,7 @@ export const metadata = { title: 'Egg Manager' };
 export default async function EggManagerPage() {
   const user = await getSessionUser();
   if (!user) redirect('/login');
-  if (!isPanelAdmin(user.role)) redirect('/');
+  if (!isPanelAdmin(user.role)) redirect('/dashboard');
 
   return <EggManager />;
 }

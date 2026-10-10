@@ -26,7 +26,7 @@ function LoginForm() {
         password,
       });
       if (signInError) throw signInError;
-      const next = searchParams.get('next') ?? '/';
+      const next = searchParams.get('next') ?? '/dashboard';
       router.replace(next);
       router.refresh();
     } catch (err) {

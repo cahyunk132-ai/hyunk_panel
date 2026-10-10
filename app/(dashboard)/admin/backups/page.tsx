@@ -9,7 +9,7 @@ export const metadata = { title: 'Auto Backups' };
 export default async function AdminBackupsPage() {
   const user = await getSessionUser();
   if (!user) redirect('/login');
-  if (!isPanelAdmin(user.role)) redirect('/');
+  if (!isPanelAdmin(user.role)) redirect('/dashboard');
 
   return <BackupSchedulesAdmin />;
 }
