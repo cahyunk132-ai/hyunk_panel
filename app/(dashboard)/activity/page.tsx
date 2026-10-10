@@ -18,7 +18,7 @@ export default async function ActivityPage({
 }) {
   const user = await getSessionUser();
   if (!user) redirect('/login');
-  if (!(await hasPermission(user, 'audit_log'))) redirect('/');
+  if (!(await hasPermission(user, 'audit_log'))) redirect('/dashboard');
 
   const page = Math.max(parseInt(searchParams.page ?? '1', 10) || 1, 1);
   const actionFilter = (searchParams.action ?? '').trim();

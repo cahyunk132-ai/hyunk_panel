@@ -16,7 +16,7 @@ export const metadata = { title: 'Detail Node' };
 export default async function NodeDetailPage({ params }: { params: { id: string } }) {
   const user = await getSessionUser();
   if (!user) redirect('/login');
-  if (!isPanelAdmin(user.role)) redirect('/');
+  if (!isPanelAdmin(user.role)) redirect('/dashboard');
 
   const service = getSupabaseServiceClient();
   const { data: node } = await service

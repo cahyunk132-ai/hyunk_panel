@@ -74,7 +74,7 @@ export default function PrivacyPage() {
           href="/"
           className="inline-flex items-center gap-1 text-sm text-ink-muted transition-colors hover:text-accent"
         >
-          ← Back to Panel
+          ← Back to Home
         </Link>
 
         <article className="mt-6 rounded-2xl border border-line bg-base-850/90 p-6 shadow-card backdrop-blur sm:p-10">

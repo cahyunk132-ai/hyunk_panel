@@ -3,8 +3,8 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 
 /**
  * Auth guard untuk seluruh dashboard + API panel.
- * - /login             → publik (redirect ke / bila sudah login)
- * - /privacy           → publik (Privacy Policy, boleh diakses tanpa login)
+ * - /login             → publik (redirect ke /dashboard bila sudah login)
+ * - /, /privacy, /tos  → publik (homepage dan legal pages, boleh diakses tanpa login)
  * - /api/remote/*      → publik (Wings; auth pakai Bearer token node di handler)
  * - /api/auth/*        → publik (termasuk OAuth callback cloud storage)
  * - /api/cron/*        → publik (Vercel Cron; divalidasi via CRON_SECRET di handler)
@@ -17,7 +17,9 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (
+    pathname === '/' ||
     pathname === '/privacy' ||
+    pathname === '/tos' ||
     pathname.startsWith('/api/remote') ||
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/api/cron')
@@ -72,7 +74,7 @@ export async function middleware(request: NextRequest) {
 
   if (isLoginPage) {
     const url = request.nextUrl.clone();
-    url.pathname = '/';
+    url.pathname = '/dashboard';
     url.search = '';
     return NextResponse.redirect(url);
   }

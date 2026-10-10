@@ -11,7 +11,7 @@ export const metadata = { title: 'Users' };
 export default async function UsersPage() {
   const user = await getSessionUser();
   if (!user) redirect('/login');
-  if (!isPanelAdmin(user.role)) redirect('/');
+  if (!isPanelAdmin(user.role)) redirect('/dashboard');
 
   const service = getSupabaseServiceClient();
   const [{ data: users }, { data: assignments }, { count: ownerPanelCount }] = await Promise.all([

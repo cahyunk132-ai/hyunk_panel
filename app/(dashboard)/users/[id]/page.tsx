@@ -13,7 +13,7 @@ export const metadata = { title: 'Detail User' };
 export default async function UserDetailPage({ params }: { params: { id: string } }) {
   const user = await getSessionUser();
   if (!user) redirect('/login');
-  if (!isPanelAdmin(user.role)) redirect('/');
+  if (!isPanelAdmin(user.role)) redirect('/dashboard');
 
   const service = getSupabaseServiceClient();
   const { data: target } = await service

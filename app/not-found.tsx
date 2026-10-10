@@ -9,7 +9,7 @@ export default function NotFound() {
         href="/"
         className="rounded-lg border border-line bg-base-800 px-4 py-2 text-sm text-ink transition-colors hover:border-accent/40 hover:text-accent"
       >
-        ← Kembali ke dashboard
+        ← Back to Home
       </Link>
     </div>
   );

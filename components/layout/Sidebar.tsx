@@ -25,7 +25,7 @@ const iconProps = {
 
 const NAV_ITEMS: NavItem[] = [
   {
-    href: '/',
+    href: '/dashboard',
     label: 'Dashboard',
     icon: (
       <svg {...iconProps}>
@@ -162,11 +162,11 @@ export function Sidebar({
           if (item.href === '/storage') return true;
           if (item.adminOnly) return role === 'owner_panel' || role === 'admin';
           if (role === 'owner_panel' || role === 'admin') return true;
-          if (role === 'moderator') return ['/', '/servers', '/activity'].includes(item.href);
+          if (role === 'moderator') return ['/dashboard', '/servers', '/activity'].includes(item.href);
           return item.href === '/servers';
         }).map((item) => {
           const active =
-            item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
+            item.href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(item.href);
           return (
             <Link
               key={item.href}
