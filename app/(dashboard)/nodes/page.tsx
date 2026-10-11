@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
@@ -35,7 +36,17 @@ export default async function NodesPage() {
             Mesin yang menjalankan Wings. Token node tersimpan terenkripsi (AES-256-GCM).
           </p>
         </div>
-        <NewNodeButton />
+        <div className="flex items-center gap-2">
+          <Link href="/admin/nodes/migrate">
+            <button className="inline-flex items-center gap-1.5 rounded-lg bg-base-600 px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:bg-base-700 border border-line">
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
+              Migrasi Node
+            </button>
+          </Link>
+          <NewNodeButton />
+        </div>
       </div>
 
       {(nodes ?? []).length === 0 ? (
