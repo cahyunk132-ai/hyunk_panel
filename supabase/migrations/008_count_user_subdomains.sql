@@ -1,6 +1,11 @@
 -- ============================================================================
 -- HYUNK PANEL — Migration 008: count_user_subdomains (kuota subdomain)
 -- ============================================================================
+-- DEPRECATED — dipertahankan hanya sebagai riwayat. Sistem subdomain sekarang
+-- satu subdomain aktif per server TANPA kuota per user, dan function kuota ini
+-- dihapus lagi oleh 009_drop_subdomain_quota.sql. Jangan dipakai di kode baru:
+-- function ini hanya akan hidup kembali bila migration ini dijalankan ulang.
+-- ============================================================================
 -- Bug: kuota subdomain dihitung hanya dari `servers.owner_id`, sehingga buyer
 -- yang servernya dibuat admin (server TANPA owner_id, buyer hanya terdaftar di
 -- `server_users`) selalu punya hitungan 0 → kuota tidak pernah berkurang.

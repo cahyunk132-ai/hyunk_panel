@@ -41,8 +41,8 @@ Browser ──► /api/... (Next.js API route, serverless) ──► Wings API (
 ### 1. Supabase
 
 1. Buat project baru di [supabase.com](https://supabase.com).
-2. Buka **SQL Editor**, jalankan [`001_initial.sql`](supabase/migrations/001_initial.sql), [`002_role_management.sql`](supabase/migrations/002_role_management.sql), [`003_egg_system.sql`](supabase/migrations/003_egg_system.sql), [`004_auto_download.sql`](supabase/migrations/004_auto_download.sql), [`005_auto_backup.sql`](supabase/migrations/005_auto_backup.sql), [`006_server_subdomains.sql`](supabase/migrations/006_server_subdomains.sql), [`007_auto_server_users.sql`](supabase/migrations/007_auto_server_users.sql), dan [`008_count_user_subdomains.sql`](supabase/migrations/008_count_user_subdomains.sql).
-   Migration kedua menambahkan role hierarchy, subuser assignment, batas lima Owner Panel, dan policy RLS berbasis role. Migration ketiga menambahkan Egg, versi, assignment Egg ke node, serta referensi Egg/versi aktif pada server. Migration keempat menambahkan kolom auto-download pada versi Egg (provider, URL template custom, variabel, filename, flag executable). Migration kelima menambahkan **Auto Backup System**: tabel `storage_providers`, `backup_schedules`, dan `backup_logs` beserta RLS-nya. Migration keenam menambahkan **Subdomain Manager**: tabel `server_subdomains` (subdomain per server → IP:port via reverse proxy Wings) beserta RLS-nya. Migration ketujuh mengisi baris `server_users` yang hilang untuk server yang sudah ada plus trigger auto-assign owner. Migration kedelapan menambahkan function `count_user_subdomains(uuid)` untuk kuota subdomain — menghitung subdomain dari server milik user **dan** server yang ditugaskan kepadanya lewat `server_users` (buyer server buatan admin tidak punya `owner_id`).
+2. Buka **SQL Editor**, jalankan [`001_initial.sql`](supabase/migrations/001_initial.sql), [`002_role_management.sql`](supabase/migrations/002_role_management.sql), [`003_egg_system.sql`](supabase/migrations/003_egg_system.sql), [`004_auto_download.sql`](supabase/migrations/004_auto_download.sql), [`005_auto_backup.sql`](supabase/migrations/005_auto_backup.sql), [`006_server_subdomains.sql`](supabase/migrations/006_server_subdomains.sql), [`007_auto_server_users.sql`](supabase/migrations/007_auto_server_users.sql), dan [`008_count_user_subdomains.sql`](supabase/migrations/008_count_user_subdomains.sql), lalu [`009_drop_subdomain_quota.sql`](supabase/migrations/009_drop_subdomain_quota.sql).
+   Migration kedua menambahkan role hierarchy, subuser assignment, batas lima Owner Panel, dan policy RLS berbasis role. Migration ketiga menambahkan Egg, versi, assignment Egg ke node, serta referensi Egg/versi aktif pada server. Migration keempat menambahkan kolom auto-download pada versi Egg (provider, URL template custom, variabel, filename, flag executable). Migration kelima menambahkan **Auto Backup System**: tabel `storage_providers`, `backup_schedules`, dan `backup_logs` beserta RLS-nya. Migration keenam menambahkan **Subdomain Manager**: tabel `server_subdomains` (subdomain per server → IP:port via reverse proxy Wings) beserta RLS-nya. Migration ketujuh mengisi baris `server_users` yang hilang untuk server yang sudah ada plus trigger auto-assign owner. Migration kedelapan sempat menambahkan function `count_user_subdomains(uuid)` untuk kuota subdomain per user, dan migration kesembilan **menghapusnya** — sistem subdomain sekarang **satu subdomain aktif per server tanpa kuota per user**, jadi function kuota itu tidak dipakai lagi.
 3. Buat user pertama: **Authentication → Users → Add user** (email + password).
 4. Jadikan Owner Panel pertama — di SQL Editor:
    ```sql
@@ -226,13 +226,17 @@ Dropdown permission & checkbox Ignore Player Limit di tabel auto-save (PUT) seti
   subdomain aktif (badge status, tombol copy, hapus), form daftar dengan validasi realtime
   (huruf kecil/angka/strip, 3–32 karakter, blacklist nama sistem, cek ketersediaan via
   `GET /api/servers/{id}/subdomain?check=`), dan preview `[nama].[base domain]`. Endpoint:
-  `GET`/`POST`/`DELETE /api/servers/{id}/subdomain` (kelola: pemilik server / admin).
+  `GET`/`POST`/`DELETE /api/servers/{id}/subdomain`.
+  **Satu subdomain per server**: begitu server punya subdomain aktif, form register tidak
+  muncul lagi di UI (hanya subdomain aktif + tombol hapus) dan `POST` menjawab `409`
+  *"Server ini sudah memiliki subdomain aktif"* — hapus dulu untuk mendaftarkan yang baru.
+  **Tanpa kuota per user**: siapa pun yang punya akses ke server tersebut boleh daftar dan
+  hapus — Owner Panel/Admin, pemilik server (`servers.owner_id`), atau anggota yang terdaftar
+  di `server_users`. Aturan itu satu tempat di `lib/subdomains/access.ts`
+  (`hasServerAccess` / `requireServerAccess`) dan dipakai bersama oleh API route serta
+  halaman Network supaya UI dan API tidak pernah beda.
   Admin memantau semua subdomain di `/admin/subdomains` (tabel subdomain, server, owner,
   port, tanggal dibuat + hapus per row).
-  **Kuota**: user/moderator/subuser maksimal 2 subdomain; Owner Panel/Admin tanpa batas.
-  Kuota dihitung lewat `count_user_subdomains` (migrasi 008) dari **semua server yang bisa
-  diakses user** — server miliknya sendiri (`servers.owner_id`) maupun server yang
-  ditugaskan kepadanya (`server_users`), tanpa double count.
 - **Users (admin)** — buat user, ubah role, assign server + permission granular, cabut akses,
   hapus akun.
 - **Egg Manager + Generic Auto Download** — setiap versi Egg dapat memiliki `download_provider`:
@@ -438,6 +442,7 @@ supabase/migrations/005_auto_backup.sql
 supabase/migrations/006_server_subdomains.sql
 supabase/migrations/007_auto_server_users.sql
 supabase/migrations/008_count_user_subdomains.sql
+supabase/migrations/009_drop_subdomain_quota.sql
 ```
 
 ## Catatan operasional
