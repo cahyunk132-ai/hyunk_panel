@@ -14,3 +14,6 @@ export const WS_TOKEN_TTL_SECONDS = 300;
 
 /** Panjang maksimum konten file yang boleh diedit di browser (2 MB). */
 export const MAX_EDITABLE_FILE_BYTES = 2 * 1024 * 1024;
+
+/** Baris per halaman tabel monitoring backup admin (GET /api/admin/backup-logs). */
+export const BACKUP_LOG_PAGE_SIZE = 20;

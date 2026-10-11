@@ -267,6 +267,60 @@ export interface BackupLogRow {
   completed_at: string | null;
 }
 
+/** Grup status untuk filter UI (creating/uploading digabung jadi "running"). */
+export type BackupStatusFilter = 'all' | 'pending' | 'running' | 'done' | 'failed';
+
+/** Satu baris backup log untuk halaman monitoring admin (sudah di-join). */
+export interface AdminBackupLogRow {
+  id: string;
+  server_id: string;
+  schedule_id: string | null;
+  backup_uuid: string | null;
+  storage_provider_id: string | null;
+  storage_file_id: string | null;
+  storage_file_name: string | null;
+  size_bytes: number | null;
+  status: BackupLogStatus | null;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
+  // ── join ──
+  server_name: string | null;
+  server_uuid: string | null;
+  owner_id: string | null;
+  owner_email: string | null;
+  owner_username: string | null;
+  provider_name: string | null;
+  provider_type: StorageProviderType | null;
+}
+
+/** Ringkasan header halaman monitoring backup. */
+export interface AdminBackupStats {
+  /** Total backup yang dimulai pada rentang "hari ini". */
+  total_today: number;
+  success_today: number;
+  failed_today: number;
+  /** Sum seluruh size_bytes di backup_logs (seluruh waktu). */
+  total_storage_bytes: number;
+  /** true bila jumlah baris melewati batas dan penjumlahan dipotong. */
+  storage_approximate: boolean;
+  /** Jumlah server yang punya jadwal backup aktif (is_enabled = true). */
+  active_schedules: number;
+  /** Rentang "hari ini" yang dipakai (ISO). */
+  range_from: string;
+  range_to: string;
+}
+
+/** Response GET /api/admin/backup-logs. */
+export interface AdminBackupLogsResponse {
+  logs: AdminBackupLogRow[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  stats: AdminBackupStats;
+}
+
 // ─── API payloads ────────────────────────────────────────────────────────────
 
 export interface ApiErrorShape {

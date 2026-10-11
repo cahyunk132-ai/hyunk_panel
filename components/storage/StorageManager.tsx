@@ -7,16 +7,8 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Field } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/Spinner';
+import { PROVIDER_META } from '@/lib/storage/provider-meta';
 import type { PublicStorageProvider, StorageProviderType } from '@/types';
-
-const PROVIDER_META: Record<StorageProviderType, { label: string; icon: string; color: string }> = {
-  gdrive: { label: 'Google Drive', icon: 'G', color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
-  dropbox: { label: 'Dropbox', icon: 'D', color: 'bg-sky-500/15 text-sky-400 border-sky-500/30' },
-  onedrive: { label: 'OneDrive', icon: 'O', color: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
-  s3: { label: 'S3 Compatible', icon: 'S3', color: 'bg-orange-500/15 text-orange-400 border-orange-500/30' },
-  sftp: { label: 'SFTP', icon: 'SF', color: 'bg-violet-500/15 text-violet-300 border-violet-500/30' },
-  webdav: { label: 'WebDAV', icon: 'WD', color: 'bg-teal-500/15 text-teal-400 border-teal-500/30' },
-};
 
 type ManualProvider = 's3' | 'sftp' | 'webdav';
 
