@@ -20,11 +20,21 @@ export const runtime = 'nodejs';
 const SUBDOMAIN_COLUMNS = 'id, server_id, subdomain, full_domain, port, created_at, updated_at';
 
 /**
- * Kelola subdomain: semua role boleh, tapi hanya untuk server miliknya sendiri.
+ * Kelola subdomain: semua role boleh untuk server miliknya atau yang ditugaskan kepadanya.
  * Owner Panel/Admin boleh kelola subdomain server siapa pun (lihat migrasi 006).
  */
-function canManageSubdomain(user: SessionUser, server: ServerRow): boolean {
-  return isPanelAdmin(user.role) || server.owner_id === user.id;
+async function canManageSubdomain(user: SessionUser, server: ServerRow): Promise<boolean> {
+  if (isPanelAdmin(user.role) || server.owner_id === user.id) return true;
+
+  // Cek apakah user punya assignment di server ini.
+  const supabase = getSupabaseServiceClient();
+  const { data } = await supabase
+    .from('server_users')
+    .select('user_id')
+    .eq('server_id', server.id)
+    .eq('user_id', user.id)
+    .maybeSingle();
+  return !!data;
 }
 
 /**
@@ -158,7 +168,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
  * POST /api/servers/{id}/subdomain — daftarkan subdomain baru untuk server.
  * Body: { subdomain: string, port?: number }. Port default = port allocation utama.
  *
- * Semua user boleh mendaftarkan subdomain untuk server MILIKNYA sendiri.
+ * Semua user boleh mendaftarkan subdomain untuk server miliknya atau yang ditugaskan kepadanya.
  * Kuota: moderator/user/subuser maks. SUBDOMAIN_QUOTA_PER_USER subdomain
  * (total dari semua server miliknya) → 429 bila habis. Owner Panel/Admin tanpa batas.
  */
@@ -169,7 +179,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   if (result instanceof Response) return result;
   const server = result.server;
 
-  if (!canManageSubdomain(user, server)) {
+  if (!(await canManageSubdomain(user, server))) {
     return Response.json(
       { error: 'Kamu hanya dapat mendaftarkan subdomain untuk server milikmu sendiri' },
       { status: 403 },
@@ -299,7 +309,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
   if (result instanceof Response) return result;
   const server = result.server;
 
-  if (!canManageSubdomain(user, server)) {
+  if (!(await canManageSubdomain(user, server))) {
     return Response.json(
       { error: 'Kamu hanya dapat menghapus subdomain dari server milikmu sendiri' },
       { status: 403 },
