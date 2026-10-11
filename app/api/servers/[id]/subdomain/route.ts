@@ -37,20 +37,155 @@ async function canManageSubdomain(user: SessionUser, server: ServerRow): Promise
   return !!data;
 }
 
+/** Nama SQL function penghitung kuota (dibuat di migrasi 008). */
+const COUNT_SUBDOMAINS_RPC = 'count_user_subdomains';
+/** Jumlah id server per query `.in()` — jaga URL request tetap pendek. */
+const SERVER_ID_CHUNK_SIZE = 200;
+/** Supabase membatasi 1000 baris per request → id server diambil ber-paging. */
+const SERVER_ID_PAGE_SIZE = 1000;
+/** Bila RPC belum tersedia, coba lagi paling cepat setelah jeda ini (ms). */
+const RPC_RETRY_AFTER_MS = 5 * 60 * 1000;
+
 /**
- * Jumlah subdomain milik user, dihitung dari SEMUA server yang dia miliki:
- *   SELECT COUNT(*) FROM server_subdomains ss
+ * RPC `count_user_subdomains` belum ada (migrasi 008 belum dijalankan).
+ * Di-cache per proses supaya kita tidak memanggil function yang gagal terus;
+ * kedaluwarsa setelah RPC_RETRY_AFTER_MS.
+ */
+let rpcUnavailableUntil = 0;
+
+/**
+ * Jumlah subdomain yang dihitung ke kuota user.
+ *
+ * Dihitung dari SEMUA server yang bisa diakses user — bukan hanya server dengan
+ * `servers.owner_id = user.id`. Buyer yang servernya dibuat admin tidak punya
+ * `owner_id` di tabel servers; mereka hanya terdaftar di `server_users`,
+ * sehingga hitungan lama selalu 0 dan kuota tidak pernah berkurang.
+ *
+ * Logika utama ada di SQL function `public.count_user_subdomains(p_user_id)`
+ * (supabase/migrations/008_count_user_subdomains.sql):
+ *
+ *   SELECT COUNT(DISTINCT ss.id)
+ *   FROM server_subdomains ss
  *   JOIN servers s ON s.id = ss.server_id
- *   WHERE s.owner_id = [user_id]
+ *   LEFT JOIN server_users su
+ *     ON su.server_id = ss.server_id AND su.user_id = p_user_id
+ *   WHERE s.owner_id = p_user_id OR su.user_id = p_user_id
+ *
+ * Bila function itu belum ada di database, jatuh ke hitungan manual lewat
+ * PostgREST (lihat `countUserSubdomainsByQueries`).
  */
 async function countUserSubdomains(userId: string): Promise<number> {
   const service = getSupabaseServiceClient();
-  const { count, error } = await service
-    .from('server_subdomains')
-    .select('id, servers!inner(owner_id)', { count: 'exact', head: true })
-    .eq('servers.owner_id', userId);
-  if (error) throw new Error(error.message);
-  return count ?? 0;
+
+  if (Date.now() >= rpcUnavailableUntil) {
+    const { data, error } = await service.rpc(COUNT_SUBDOMAINS_RPC, { p_user_id: userId });
+    if (!error) {
+      rpcUnavailableUntil = 0;
+      return toCount(data);
+    }
+    if (!isMissingRpcError(error)) throw new Error(error.message);
+
+    // Migrasi 008 belum dijalankan → pakai fallback, jangan spam RPC gagal.
+    rpcUnavailableUntil = Date.now() + RPC_RETRY_AFTER_MS;
+    console.warn(
+      `[subdomains] ${COUNT_SUBDOMAINS_RPC} belum tersedia (${error.message}); ` +
+        'memakai hitungan fallback. Jalankan supabase/migrations/008_count_user_subdomains.sql.',
+    );
+  }
+
+  return countUserSubdomainsByQueries(service, userId);
+}
+
+/** Normalisasi hasil RPC (bisa number, string angka, atau null) ke hitungan. */
+function toCount(value: unknown): number {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 0;
+}
+
+/** Deteksi "function belum ada di database" (PGRST202 / 42883) vs error asli. */
+function isMissingRpcError(error: { code?: string; message?: string }): boolean {
+  if (error.code === 'PGRST202' || error.code === '42883') return true;
+  const message = error.message ?? '';
+  return (
+    new RegExp(COUNT_SUBDOMAINS_RPC, 'i').test(message) &&
+    /(could not find|does not exist|not exist|not found)/i.test(message)
+  );
+}
+
+/**
+ * Fallback tanpa RPC: kumpulkan id server yang bisa diakses user — sebagai owner
+ * (`servers.owner_id`) maupun sebagai anggota (`server_users.user_id`) — lalu
+ * hitung subdomain di server-server tersebut. Id di-union dulu, jadi server yang
+ * memenuhi kedua kondisi tetap terhitung sekali (tanpa double count).
+ */
+async function countUserSubdomainsByQueries(
+  service: ReturnType<typeof getSupabaseServiceClient>,
+  userId: string,
+): Promise<number> {
+  const [ownedIds, assignedIds] = await Promise.all([
+    fetchOwnedServerIds(service, userId),
+    fetchAssignedServerIds(service, userId),
+  ]);
+
+  // Union tanpa duplikat: id server yang muncul di kedua sumber tetap sekali.
+  const seen: Record<string, true> = {};
+  const serverIds: string[] = [];
+  for (const id of [...ownedIds, ...assignedIds]) {
+    if (!seen[id]) {
+      seen[id] = true;
+      serverIds.push(id);
+    }
+  }
+  if (serverIds.length === 0) return 0;
+
+  let total = 0;
+  for (let i = 0; i < serverIds.length; i += SERVER_ID_CHUNK_SIZE) {
+    const { count, error } = await service
+      .from('server_subdomains')
+      .select('id', { count: 'exact', head: true })
+      .in('server_id', serverIds.slice(i, i + SERVER_ID_CHUNK_SIZE));
+    if (error) throw new Error(error.message);
+    total += count ?? 0;
+  }
+  return total;
+}
+
+/** Id server yang dimiliki user langsung (`servers.owner_id = user.id`). */
+async function fetchOwnedServerIds(
+  service: ReturnType<typeof getSupabaseServiceClient>,
+  userId: string,
+): Promise<string[]> {
+  const ids: string[] = [];
+  for (let from = 0; ; from += SERVER_ID_PAGE_SIZE) {
+    const { data, error } = await service
+      .from('servers')
+      .select('id')
+      .eq('owner_id', userId)
+      .range(from, from + SERVER_ID_PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as Array<{ id?: string | null }>;
+    ids.push(...rows.map((row) => row?.id).filter((id): id is string => !!id));
+    if (rows.length < SERVER_ID_PAGE_SIZE) return ids;
+  }
+}
+
+/** Id server yang diakses user lewat assignment (`server_users.user_id`). */
+async function fetchAssignedServerIds(
+  service: ReturnType<typeof getSupabaseServiceClient>,
+  userId: string,
+): Promise<string[]> {
+  const ids: string[] = [];
+  for (let from = 0; ; from += SERVER_ID_PAGE_SIZE) {
+    const { data, error } = await service
+      .from('server_users')
+      .select('server_id')
+      .eq('user_id', userId)
+      .range(from, from + SERVER_ID_PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as Array<{ server_id?: string | null }>;
+    ids.push(...rows.map((row) => row?.server_id).filter((id): id is string => !!id));
+    if (rows.length < SERVER_ID_PAGE_SIZE) return ids;
+  }
 }
 
 /** Kuota subdomain user yang sedang login. Owner Panel/Admin = tanpa batas. */
@@ -170,7 +305,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
  *
  * Semua user boleh mendaftarkan subdomain untuk server miliknya atau yang ditugaskan kepadanya.
  * Kuota: moderator/user/subuser maks. SUBDOMAIN_QUOTA_PER_USER subdomain
- * (total dari semua server miliknya) → 429 bila habis. Owner Panel/Admin tanpa batas.
+ * (total dari semua server yang ia akses — milik sendiri maupun hasil assignment
+ * admin lewat server_users) → 429 bila habis. Owner Panel/Admin tanpa batas.
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   const user = await requireUser();

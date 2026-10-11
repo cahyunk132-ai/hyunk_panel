@@ -126,7 +126,7 @@ export interface SubdomainResponse {
   base_domain: string;
   target: { host: string; port: number } | null;
   default_port: number | null;
-  /** Kuota subdomain milik user yang sedang login (semua server miliknya). */
+  /** Kuota subdomain user yang sedang login (semua server yang ia akses). */
   quota: SubdomainQuota;
 }
 
