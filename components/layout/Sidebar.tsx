@@ -11,6 +11,8 @@ interface NavItem {
   icon: React.ReactNode;
   /** Hanya Owner Panel & Admin (section panel management). */
   adminOnly?: boolean;
+  /** Selalu tampil untuk semua role (mis. pengaturan pribadi). */
+  alwaysVisible?: boolean;
 }
 
 const iconProps = {
@@ -123,6 +125,19 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    href: '/settings/appearance',
+    label: 'Appearance',
+    alwaysVisible: true,
+    icon: (
+      <svg {...iconProps}>
+        <path d="M12 3a9 9 0 1 0 0 18c.9 0 1.5-.7 1.5-1.5 0-.4-.2-.7-.4-1-.2-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H16a5 5 0 0 0 5-5c0-4.4-4-8-9-8Z" />
+        <circle cx="7.5" cy="10.5" r="1" />
+        <circle cx="10.5" cy="7" r="1" />
+        <circle cx="15" cy="7.5" r="1" />
+      </svg>
+    ),
+  },
 ];
 
 export function Sidebar({
@@ -152,7 +167,7 @@ export function Sidebar({
 
   return (
     <aside
-      className={`fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-line-soft bg-base-950/95 shadow-2xl transition-transform duration-200 md:relative md:z-auto md:w-56 md:translate-x-0 md:bg-base-950/80 md:shadow-none ${
+      className={`glass-sidebar fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-line-soft bg-base-950/95 shadow-2xl transition-transform duration-200 md:relative md:z-auto md:w-56 md:translate-x-0 md:bg-base-950/80 md:shadow-none ${
         isOpen ? 'translate-x-0' : '-translate-x-full'
       }`}
     >
@@ -170,7 +185,7 @@ export function Sidebar({
       <nav className="flex-1 space-y-1 px-3 py-4">
         {NAV_ITEMS.filter((item) => {
           // Storage untuk semua role (connect storage = milik user sendiri).
-          if (item.href === '/storage') return true;
+          if (item.alwaysVisible || item.href === '/storage') return true;
           if (item.adminOnly) return role === 'owner_panel' || role === 'admin';
           if (role === 'owner_panel' || role === 'admin') return true;
           if (role === 'moderator') return ['/dashboard', '/servers', '/activity'].includes(item.href);

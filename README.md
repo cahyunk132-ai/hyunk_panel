@@ -381,11 +381,29 @@ Retention: backup cloud terlama dihapus otomatis bila melebihi limit
   stream WebSocket; Vercel serverless **tidak** menjaga koneksi WS persistent — itu sebabnya
   browser yang memegang socket.
 
+## Theme & Appearance
+
+Kustomisasi tampilan ada di **Appearance** (sidebar) atau lewat tombol 🎨 di topbar (drawer cepat).
+
+- **Tema warna** (9): Dark (default), Light, Ocean, Forest, Sakura, Ember, Midnight Purple, Slate, System (ikut OS).
+  Tema dipasang lewat `next-themes` (atribut `data-theme` di `<html>`).
+- **Latar**: solid (warna tema), gradient animasi, 6 wallpaper bawaan (`public/wallpapers/`), atau foto sendiri
+  (disimpan di localStorage sebagai base64, dikompres otomatis ke ±2.5 MB).
+- **Glassmorphism** untuk sidebar & card dengan opacity 30–90%, **warna aksen** bebas + 8 preset,
+  **ukuran font** (Small/Medium/Large), dan **compact mode**.
+- Semua preferensi tersimpan di localStorage (`hyunk-theme`, `hyunk-appearance`, `hyunk-appearance-bg`)
+  dan diterapkan sebagai CSS variables di `document.documentElement` sebelum halaman tergambar
+  (inline script di `<head>`, lihat `lib/appearance/init-script.ts`).
+- Untuk membaca/mengubah preferensi dari komponen mana pun: `useAppearance()` (`hooks/useAppearance.ts`).
+- Menambah tema baru: tambah entri di `PALETTES` (`lib/appearance/config.ts`) — 8 warna dasar
+  (`bgPrimary`, `bgSecondary`, `bgSidebar`, `textPrimary`, `textSecondary`, `accent`, `border`, `card`).
+
 ## Struktur
 
 ```
 app/            → halaman (App Router) + API routes (panel + remote)
-components/     → UI, layout, console (websocket), file manager, power, backup, users
+components/     → UI, layout, console (websocket), file manager, power, backup, users,
+                  theme/ (ThemeProvider, AppearanceControls, drawer appearance)
 hooks/          → useWingsConsole (websocket), useServerStatus (polling)
 lib/
   wings/        → client.ts (SATU-SATUNYA pintu ke Wings), crypto.ts (AES-256-GCM),
@@ -393,6 +411,8 @@ lib/
   remote/       → auth.ts (validasi wings→panel), config.ts (settings/process builder)
   supabase/     → client browser/server/service
   auth/         → session.ts, rbac.ts (checkPermission)
+  appearance/   → config.ts (palet & default), apply.ts (CSS variables), init-script.ts (anti-flash),
+                  storage.ts, image.ts (kompres foto custom)
   storage/      → auto backup: crypto.ts (enkripsi kredensial), schedule.ts (next_run_at),
                   tokens.ts (refresh OAuth), gdrive/dropbox/s3/sftp/webdav.ts (upload
                   streaming), backupJob.ts (pipeline cron/manual/admin)

@@ -87,7 +87,7 @@ export default async function ActivityPage({
         </div>
         <button
           type="submit"
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-base-900 hover:bg-accent-dim"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-dim"
         >
           Filter
         </button>

@@ -69,3 +69,137 @@ body {
 .fade-in-up {
   animation: fade-in-up 0.25s ease-out both;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Theme & Appearance (lihat lib/appearance/*)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Lapisan latar (wallpaper / gradient / solid) di belakang seluruh konten */
+.app-bg-layer {
+  background: var(--app-bg, rgb(var(--bg-primary)));
+}
+html[data-bg-mode='gradient'] .app-bg-layer {
+  background-size: 240% 240%;
+  animation: app-bg-flow 24s ease-in-out infinite;
+}
+@keyframes app-bg-flow {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-bg-mode='gradient'] .app-bg-layer {
+    animation: none;
+  }
+}
+
+/* Glassmorphism: blur ditaruh di ::before agar elemen fixed (modal) di dalam card tetap benar */
+html[data-glass='on'] .glass-card {
+  position: relative;
+  isolation: isolate;
+  background-color: transparent;
+  border-color: rgb(var(--border) / 0.55);
+}
+/* Sidebar sudah punya posisi sendiri (fixed di mobile, relative di md+) — jangan ditimpa. */
+html[data-glass='on'] .glass-sidebar {
+  isolation: isolate;
+  background-color: transparent;
+  border-color: rgb(var(--border) / 0.55);
+}
+html[data-glass='on'] .glass-card::before,
+html[data-glass='on'] .glass-sidebar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+}
+html[data-glass='on'] .glass-card::before {
+  background-color: rgb(var(--card) / var(--glass-alpha));
+}
+html[data-glass='on'] .glass-sidebar::before {
+  background-color: rgb(var(--bg-sidebar) / var(--glass-alpha));
+}
+
+/* Compact mode: padding & spacing dipadatkan (selector berbasis class token) */
+html[data-compact='on'] [class~='p-6'],
+html[data-compact='on'] [class~='md:p-6'] {
+  padding: 1rem !important;
+}
+html[data-compact='on'] [class~='p-4'] {
+  padding: 0.625rem !important;
+}
+html[data-compact='on'] [class~='p-3'] {
+  padding: 0.5rem !important;
+}
+html[data-compact='on'] [class~='px-5'] {
+  padding-left: 0.875rem !important;
+  padding-right: 0.875rem !important;
+}
+html[data-compact='on'] [class~='px-4'] {
+  padding-left: 0.625rem !important;
+  padding-right: 0.625rem !important;
+}
+html[data-compact='on'] [class~='px-6'] {
+  padding-left: 1rem !important;
+  padding-right: 1rem !important;
+}
+html[data-compact='on'] [class~='px-3'] {
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
+}
+html[data-compact='on'] [class~='py-6'] {
+  padding-top: 0.75rem !important;
+  padding-bottom: 0.75rem !important;
+}
+html[data-compact='on'] [class~='py-4'] {
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+}
+html[data-compact='on'] [class~='py-3'] {
+  padding-top: 0.375rem !important;
+  padding-bottom: 0.375rem !important;
+}
+html[data-compact='on'] [class~='py-2.5'] {
+  padding-top: 0.3125rem !important;
+  padding-bottom: 0.3125rem !important;
+}
+html[data-compact='on'] [class~='py-2'] {
+  padding-top: 0.25rem !important;
+  padding-bottom: 0.25rem !important;
+}
+html[data-compact='on'] [class~='h-14'] {
+  height: 3rem !important;
+}
+html[data-compact='on'] [class~='gap-4'] {
+  gap: 0.75rem !important;
+}
+html[data-compact='on'] [class~='gap-3'] {
+  gap: 0.5rem !important;
+}
+html[data-compact='on'] [class~='gap-2.5'] {
+  gap: 0.375rem !important;
+}
+html[data-compact='on'] [class~='gap-2'] {
+  gap: 0.375rem !important;
+}
+html[data-compact='on'] [class~='space-y-6'] > :not([hidden]) ~ :not([hidden]),
+html[data-compact='on'] [class~='space-y-5'] > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.75rem !important;
+}
+html[data-compact='on'] [class~='space-y-4'] > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.5rem !important;
+}
+html[data-compact='on'] [class~='space-y-3'] > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.375rem !important;
+}
+html[data-compact='on'] [class~='space-y-2'] > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.25rem !important;
+}
