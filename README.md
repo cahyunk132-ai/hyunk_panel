@@ -41,8 +41,8 @@ Browser ──► /api/... (Next.js API route, serverless) ──► Wings API (
 ### 1. Supabase
 
 1. Buat project baru di [supabase.com](https://supabase.com).
-2. Buka **SQL Editor**, jalankan [`001_initial.sql`](supabase/migrations/001_initial.sql), [`002_role_management.sql`](supabase/migrations/002_role_management.sql), [`003_egg_system.sql`](supabase/migrations/003_egg_system.sql), [`004_auto_download.sql`](supabase/migrations/004_auto_download.sql), lalu [`005_auto_backup.sql`](supabase/migrations/005_auto_backup.sql).
-   Migration kedua menambahkan role hierarchy, subuser assignment, batas lima Owner Panel, dan policy RLS berbasis role. Migration ketiga menambahkan Egg, versi, assignment Egg ke node, serta referensi Egg/versi aktif pada server. Migration keempat menambahkan kolom auto-download pada versi Egg (provider, URL template custom, variabel, filename, flag executable). Migration kelima menambahkan **Auto Backup System**: tabel `storage_providers`, `backup_schedules`, dan `backup_logs` beserta RLS-nya.
+2. Buka **SQL Editor**, jalankan [`001_initial.sql`](supabase/migrations/001_initial.sql), [`002_role_management.sql`](supabase/migrations/002_role_management.sql), [`003_egg_system.sql`](supabase/migrations/003_egg_system.sql), [`004_auto_download.sql`](supabase/migrations/004_auto_download.sql), lalu [`005_auto_backup.sql`](supabase/migrations/005_auto_backup.sql), dan [`006_server_subdomains.sql`](supabase/migrations/006_server_subdomains.sql).
+   Migration kedua menambahkan role hierarchy, subuser assignment, batas lima Owner Panel, dan policy RLS berbasis role. Migration ketiga menambahkan Egg, versi, assignment Egg ke node, serta referensi Egg/versi aktif pada server. Migration keempat menambahkan kolom auto-download pada versi Egg (provider, URL template custom, variabel, filename, flag executable). Migration kelima menambahkan **Auto Backup System**: tabel `storage_providers`, `backup_schedules`, dan `backup_logs` beserta RLS-nya. Migration keenam menambahkan **Subdomain Manager**: tabel `server_subdomains` (subdomain per server → IP:port via reverse proxy Wings) beserta RLS-nya.
 3. Buat user pertama: **Authentication → Users → Add user** (email + password).
 4. Jadikan Owner Panel pertama — di SQL Editor:
    ```sql
@@ -61,6 +61,7 @@ Salin `.env.local.example` → `.env.local` (lokal) atau isi di **Vercel → Set
 | `WINGS_TOKEN_ENCRYPTION_KEY` | hasil `openssl rand -hex 32` |
 | `WINGS_SEED_NODE_TOKEN` | token Wings node existing (dari `/etc/pterodactyl/config.yml` di node, field `token`) |
 | `NEXT_PUBLIC_APP_URL` | `https://panel.wangstore.web.id` |
+| `NEXT_PUBLIC_BASE_DOMAIN` | base domain Subdomain Manager, default `wangstore.web.id` |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth Google Drive (auto backup) — lihat [Auto Backup](#auto-backup-system-cloud-storage) |
 | `DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` | OAuth Dropbox (auto backup) |
 | `ONEDRIVE_CLIENT_ID` / `ONEDRIVE_CLIENT_SECRET` | OneDrive — **coming soon** (UI sudah ada, tombol disabled) |
@@ -219,6 +220,15 @@ Dropdown permission & checkbox Ignore Player Limit di tabel auto-save (PUT) seti
   Form *Create Server* hanya menampilkan port `assigned_to IS NULL` milik node terpilih —
   begitu server dibuat, `assigned_to` di-set ke server itu sehingga port tidak bisa dipakai
   server lain. Menghapus server otomatis melepas semua port-nya (`assigned_to = NULL`).
+- **Subdomain Manager (Network)** — setiap server dapat punya satu subdomain sendiri
+  (mis. `kenz.wangstore.web.id` — base domain dari `NEXT_PUBLIC_BASE_DOMAIN`) yang langsung
+  mengarah ke IP:port server via reverse proxy Wings. Tab **Network** di halaman server:
+  subdomain aktif (badge status, tombol copy, hapus), form daftar dengan validasi realtime
+  (huruf kecil/angka/strip, 3–32 karakter, blacklist nama sistem, cek ketersediaan via
+  `GET /api/servers/{id}/subdomain?check=`), dan preview `[nama].[base domain]`. Endpoint:
+  `GET`/`POST`/`DELETE /api/servers/{id}/subdomain` (kelola: pemilik server / admin).
+  Admin memantau semua subdomain di `/admin/subdomains` (tabel subdomain, server, owner,
+  port, tanggal dibuat + hapus per row).
 - **Users (admin)** — buat user, ubah role, assign server + permission granular, cabut akses,
   hapus akun.
 - **Egg Manager + Generic Auto Download** — setiap versi Egg dapat memiliki `download_provider`:
@@ -421,6 +431,7 @@ supabase/migrations/002_role_management.sql
 supabase/migrations/003_egg_system.sql
 supabase/migrations/004_auto_download.sql
 supabase/migrations/005_auto_backup.sql
+supabase/migrations/006_server_subdomains.sql
 ```
 
 ## Catatan operasional

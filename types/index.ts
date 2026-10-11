@@ -98,6 +98,44 @@ export interface ServerRow {
   created_at: string;
 }
 
+/** Subdomain aktif satu server (Subdomain Manager — reverse proxy Wings). */
+export interface ServerSubdomainRow {
+  id: string;
+  server_id: string;
+  /** Hanya bagian depan, misal "kenz". */
+  subdomain: string;
+  /** "kenz.wangstore.web.id". */
+  full_domain: string;
+  port: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Subdomain + join server/owner untuk halaman admin. */
+export interface AdminSubdomainRow extends ServerSubdomainRow {
+  server_name: string | null;
+  server_uuid: string | null;
+  owner_id: string | null;
+  owner_username: string | null;
+  owner_email: string | null;
+}
+
+/** Response GET /api/servers/{id}/subdomain. */
+export interface SubdomainResponse {
+  subdomain: ServerSubdomainRow | null;
+  base_domain: string;
+  target: { host: string; port: number } | null;
+  default_port: number | null;
+}
+
+/** Response GET /api/servers/{id}/subdomain?check=nama. */
+export interface SubdomainAvailability {
+  available: boolean;
+  subdomain: string;
+  full_domain: string | null;
+  error?: string;
+}
+
 export interface EggRow {
   id: string;
   name: string;

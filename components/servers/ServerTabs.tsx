@@ -43,6 +43,7 @@ export function ServerTabs({
       ? [{ href: `/servers/${serverId}/backups`, label: 'Backups' }]
       : []),
     ...(canViewActivity ? [{ href: `/servers/${serverId}/activity`, label: 'Activity' }] : []),
+    { href: `/servers/${serverId}/network`, label: 'Network' },
     { href: `/servers/${serverId}/settings`, label: 'Settings' },
   ];
 
