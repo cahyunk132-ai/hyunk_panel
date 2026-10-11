@@ -6,8 +6,9 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Field } from '@/components/ui/Input';
-import { PageLoader } from '@/components/ui/Spinner';
+import { SkeletonRegion, ProviderCardSkeleton } from '@/components/ui/Skeleton';
 import { PROVIDER_META } from '@/lib/storage/provider-meta';
+import { toast, toastOperation, updateToast } from '@/lib/utils/toast';
 import type { PublicStorageProvider, StorageProviderType } from '@/types';
 
 type ManualProvider = 's3' | 'sftp' | 'webdav';
@@ -36,6 +37,8 @@ export function StorageManager({
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState<TestState>({});
   const [disconnecting, setDisconnecting] = useState<PublicStorageProvider | null>(null);
+  const [testingId, setTestingId] = useState<string | null>(null);
+  const [redirecting, setRedirecting] = useState<'gdrive' | 'dropbox' | null>(null);
 
   // Form manual provider
   const [formName, setFormName] = useState('');
@@ -65,6 +68,8 @@ export function StorageManager({
   }
 
   function connectOAuth(provider: 'gdrive' | 'dropbox') {
+    setRedirecting(provider);
+    toast.info(`Mengalihkan ke ${PROVIDER_META[provider].label}…`);
     window.location.href = `/api/auth/storage/connect?provider=${provider}`;
   }
 
@@ -91,13 +96,21 @@ export function StorageManager({
         payload.username = form.username;
         payload.password = form.password;
       }
-      const res = await fetch(`/api/storage/providers/${manual}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || 'Gagal menyimpan provider');
+      await toastOperation(
+        async () => {
+          const res = await fetch(`/api/storage/providers/${manual}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || 'Gagal menyimpan provider');
+        },
+        {
+          loading: 'Menyimpan dan memeriksa koneksi storage…',
+          success: formName ? `Storage "${formName}" tersimpan` : 'Storage tersimpan',
+        },
+      );
       setConnectOpen(false);
       resetForm();
       await load();
@@ -110,15 +123,23 @@ export function StorageManager({
 
   async function testProvider(provider: PublicStorageProvider) {
     setTesting((t) => ({ ...t, [provider.id]: undefined }));
+    setTestingId(provider.id);
+    const toastId = toast.loading(`Menguji koneksi ${provider.name}…`);
     try {
       const res = await fetch(`/api/storage/providers/${provider.id}/test`, { cache: 'no-store' });
       const json = await res.json();
-      setTesting((t) => ({ ...t, [provider.id]: { ok: res.ok, message: json.message ?? json.error ?? 'Tidak ada respons' } }));
+      const message: string = json.message ?? json.error ?? 'Tidak ada respons';
+      setTesting((t) => ({ ...t, [provider.id]: { ok: res.ok, message } }));
+      updateToast(toastId, `${provider.name}: ${message}`, res.ok ? 'success' : 'error');
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error';
       setTesting((t) => ({
         ...t,
-        [provider.id]: { ok: false, message: err instanceof Error ? err.message : 'Error' },
+        [provider.id]: { ok: false, message },
       }));
+      updateToast(toastId, `${provider.name}: ${message}`, 'error');
+    } finally {
+      setTestingId(null);
     }
   }
 
@@ -126,9 +147,14 @@ export function StorageManager({
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/storage/providers/${provider.id}`, { method: 'DELETE' });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || 'Gagal disconnect');
+      await toastOperation(
+        async () => {
+          const res = await fetch(`/api/storage/providers/${provider.id}`, { method: 'DELETE' });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || 'Gagal disconnect');
+        },
+        { loading: `Memutuskan ${provider.name}…`, success: `${provider.name} diputuskan` },
+      );
       setDisconnecting(null);
       await load();
     } catch (err) {
@@ -165,8 +191,12 @@ export function StorageManager({
         </div>
       )}
 
-      {loading ? (
-        <PageLoader label="Memuat storage…" />
+      {loading && providers.length === 0 ? (
+        <SkeletonRegion label="Memuat storage" className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <ProviderCardSkeleton />
+          <ProviderCardSkeleton />
+          <ProviderCardSkeleton />
+        </SkeletonRegion>
       ) : providers.length === 0 ? (
         <div className="rounded-xl border border-dashed border-line bg-base-850/50 px-6 py-14 text-center text-sm text-ink-faint">
           Belum ada storage terhubung. Klik <strong>+ Connect Storage</strong> untuk mulai auto backup ke cloud.
@@ -213,7 +243,12 @@ export function StorageManager({
                 )}
 
                 <div className="mt-3 flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => testProvider(p)}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => testProvider(p)}
+                    loading={testingId === p.id}
+                  >
                     {test ? 'Test lagi' : 'Test'}
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => setDisconnecting(p)}>
@@ -250,7 +285,9 @@ export function StorageManager({
               <button
                 type="button"
                 onClick={() => connectOAuth('gdrive')}
-                className="flex items-center gap-3 rounded-lg border border-line bg-base-900 px-4 py-3 text-left transition-colors hover:border-emerald-500/40"
+                disabled={redirecting !== null}
+                aria-busy={redirecting === 'gdrive' || undefined}
+                className="flex items-center gap-3 rounded-lg border border-line bg-base-900 px-4 py-3 text-left transition-colors hover:border-emerald-500/40 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <span className={`flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-bold ${PROVIDER_META.gdrive.color}`}>
                   {PROVIDER_META.gdrive.icon}
@@ -263,7 +300,9 @@ export function StorageManager({
               <button
                 type="button"
                 onClick={() => connectOAuth('dropbox')}
-                className="flex items-center gap-3 rounded-lg border border-line bg-base-900 px-4 py-3 text-left transition-colors hover:border-sky-500/40"
+                disabled={redirecting !== null}
+                aria-busy={redirecting === 'dropbox' || undefined}
+                className="flex items-center gap-3 rounded-lg border border-line bg-base-900 px-4 py-3 text-left transition-colors hover:border-sky-500/40 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <span className={`flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-bold ${PROVIDER_META.dropbox.color}`}>
                   {PROVIDER_META.dropbox.icon}

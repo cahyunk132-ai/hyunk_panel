@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Spinner } from './Spinner';
 
 type Tone = 'default' | 'accent' | 'green' | 'yellow' | 'red' | 'gray' | 'violet' | 'orange' | 'blue';
 
@@ -14,11 +15,21 @@ const toneClasses: Record<Tone, string> = {
   blue: 'bg-sky-500/10 text-sky-300 border-sky-500/30',
 };
 
-export function Badge({ tone = 'default', children }: { tone?: Tone; children: ReactNode }) {
+export function Badge({
+  tone = 'default',
+  children,
+  spinning = false,
+}: {
+  tone?: Tone;
+  children: ReactNode;
+  /** Tampilkan spinner kecil di depan label (untuk status yang sedang berjalan). */
+  spinning?: boolean;
+}) {
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium ${toneClasses[tone]}`}
     >
+      {spinning && <Spinner size="sm" tone="inherit" className="h-3 w-3" />}
       {children}
     </span>
   );

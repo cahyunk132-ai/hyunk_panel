@@ -243,7 +243,7 @@ export function BackupMonitor() {
             <span className={autoRefresh ? 'dot-pulse text-emerald-400' : 'text-ink-faint'}>●</span>
             Auto 30s
           </button>
-          <Button size="sm" variant="secondary" onClick={() => setTick((v) => v + 1)} disabled={refreshing}>
+          <Button size="sm" variant="secondary" onClick={() => setTick((v) => v + 1)} loading={refreshing}>
             {refreshing ? 'Memuat…' : '⟳ Refresh'}
           </Button>
         </div>
@@ -492,8 +492,7 @@ export function BackupMonitor() {
                         {formatBytes(log.size_bytes)}
                       </td>
                       <td className="px-4 py-3">
-                        <Badge tone={STATUS_TONES[statusKey]}>
-                          {running && <span className="dot-pulse">●</span>}
+                        <Badge tone={STATUS_TONES[statusKey]} spinning={running}>
                           {STATUS_LABELS[statusKey]}
                         </Badge>
                         {hasError && (

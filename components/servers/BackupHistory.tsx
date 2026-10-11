@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/Badge';
-import { PageLoader } from '@/components/ui/Spinner';
+import { SkeletonTableRows } from '@/components/ui/Skeleton';
 import { formatBytes, formatRelativeTime } from '@/lib/utils/format';
 import type { BackupLogRow, BackupLogStatus } from '@/types';
 
@@ -19,6 +19,9 @@ const STATUS_TONES: Record<BackupLogStatus, 'yellow' | 'green' | 'red'> = {
   done: 'green',
   failed: 'red',
 };
+
+/** Status yang masih berjalan → badge menampilkan spinner. */
+const RUNNING_STATUSES: BackupLogStatus[] = ['pending', 'creating', 'uploading'];
 
 const STATUS_LABELS: Record<BackupLogStatus, string> = {
   pending: 'Pending',
@@ -69,9 +72,13 @@ export function BackupHistory({ serverId }: { serverId: string }) {
         </div>
       )}
 
-      {loading ? (
-        <div className="mt-4">
-          <PageLoader label="Memuat history…" />
+      {loading && logs.length === 0 ? (
+        <div className="mt-4 overflow-x-auto" role="status" aria-busy="true" aria-label="Memuat history backup">
+          <table className="w-full min-w-[720px] text-sm">
+            <tbody>
+              <SkeletonTableRows rows={4} cols={6} />
+            </tbody>
+          </table>
         </div>
       ) : logs.length === 0 ? (
         <div className="mt-4 rounded-lg border border-dashed border-line bg-base-850/50 px-6 py-10 text-center text-sm text-ink-faint">
@@ -116,7 +123,9 @@ export function BackupHistory({ serverId }: { serverId: string }) {
                     </td>
                     <td className="px-4 py-3 text-xs text-ink-muted">{log.provider_name ?? '—'}</td>
                     <td className="px-4 py-3">
-                      <Badge tone={STATUS_TONES[status]}>{STATUS_LABELS[status]}</Badge>
+                      <Badge tone={STATUS_TONES[status]} spinning={RUNNING_STATUSES.includes(status)}>
+                        {STATUS_LABELS[status]}
+                      </Badge>
                     </td>
                     <td className="px-4 py-3 text-right">
                       {log.download_url && (

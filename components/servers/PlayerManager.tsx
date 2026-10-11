@@ -7,6 +7,8 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { ConfirmDangerModal, Modal } from '@/components/ui/Modal';
 import { Field, Input } from '@/components/ui/Input';
 import { PageLoader, Spinner } from '@/components/ui/Spinner';
+import { SkeletonTableRows } from '@/components/ui/Skeleton';
+import { toast } from '@/lib/utils/toast';
 // `import type` saja — lib/minecraft/playerdata.ts membaca file server
 // (node:zlib) sehingga tidak boleh ikut ke bundle browser.
 import type { InventoryItem, PlayerData, PlayerSummary } from '@/lib/minecraft/playerdata';
@@ -96,6 +98,8 @@ export function PlayerManager({ serverId, canSendCommand, canEditFiles }: Player
     text: string;
   } | null>(null);
   const [busyUuid, setBusyUuid] = useState<string | null>(null);
+  /** Aksi langsung yang sedang berjalan (kick/op/whitelist/…) → spinner di tombol yang diklik. */
+  const [busyAction, setBusyAction] = useState<PlayerAction | null>(null);
 
   const [banTarget, setBanTarget] = useState<{ uuid: string; name: string | null } | null>(null);
   const [banReason, setBanReason] = useState('');
@@ -223,6 +227,7 @@ export function PlayerManager({ serverId, canSendCommand, canEditFiles }: Player
       options?: { reason?: string; name?: string | null; silentBusy?: boolean },
     ) => {
       if (!options?.silentBusy) setBusyUuid(uuid);
+      setBusyAction(action);
       setNotice(null);
       try {
         const res = await fetch(`/api/servers/${serverId}/players/${uuid}`, {
@@ -238,10 +243,9 @@ export function PlayerManager({ serverId, canSendCommand, canEditFiles }: Player
         if (!res.ok) {
           throw new Error(typeof json.error === 'string' ? json.error : 'Aksi gagal');
         }
-        setNotice({
-          tone: 'success',
-          text: `${ACTION_LABELS[action]} terkirim${json.command ? ` · /${json.command}` : ''}`,
-        });
+        const okText = `${ACTION_LABELS[action]} terkirim${json.command ? ` · /${json.command}` : ''}`;
+        setNotice({ tone: 'success', text: okText });
+        toast.success(okText);
         setBanTarget(null);
         setBanReason('');
         await load({ silent: true });
@@ -249,12 +253,12 @@ export function PlayerManager({ serverId, canSendCommand, canEditFiles }: Player
           await loadDetail(uuid);
         }
       } catch (err) {
-        setNotice({
-          tone: 'error',
-          text: err instanceof Error ? err.message : 'Aksi gagal dijalankan',
-        });
+        const message = err instanceof Error ? err.message : 'Aksi gagal dijalankan';
+        setNotice({ tone: 'error', text: message });
+        toast.error(message);
       } finally {
         setBusyUuid(null);
+        setBusyAction(null);
         setBanBusy(false);
       }
     },
@@ -299,22 +303,21 @@ export function PlayerManager({ serverId, canSendCommand, canEditFiles }: Player
         ]
           .filter(Boolean)
           .join(' · ');
-        setNotice({
-          tone: warning ? 'warning' : 'success',
-          text: warning
-            ? `${options.label} — ${warning}${detailText ? ` · ${detailText}` : ''}`
-            : `${options.label} terkirim${detailText ? ` · ${detailText}` : ''}`,
-        });
+        const okText = warning
+          ? `${options.label} — ${warning}${detailText ? ` · ${detailText}` : ''}`
+          : `${options.label} terkirim${detailText ? ` · ${detailText}` : ''}`;
+        setNotice({ tone: warning ? 'warning' : 'success', text: okText });
+        if (warning) toast.warning(okText);
+        else toast.success(okText);
         options.onDone?.();
         await load({ silent: true });
         if (detailOpen && detail?.uuid.toLowerCase() === uuid.toLowerCase()) {
           await loadDetail(uuid);
         }
       } catch (err) {
-        setNotice({
-          tone: 'error',
-          text: err instanceof Error ? err.message : 'Aksi gagal dijalankan',
-        });
+        const message = err instanceof Error ? err.message : 'Aksi gagal dijalankan';
+        setNotice({ tone: 'error', text: message });
+        toast.error(message);
       } finally {
         setBusyUuid(null);
       }
@@ -503,8 +506,19 @@ export function PlayerManager({ serverId, canSendCommand, canEditFiles }: Player
             </div>
           )}
 
-          {loading ? (
-            <PageLoader label="Memuat data player…" />
+          {loading && players.length === 0 ? (
+            <div
+              className="overflow-x-auto rounded-xl border border-line"
+              role="status"
+              aria-busy="true"
+              aria-label="Memuat data player"
+            >
+              <table className="w-full min-w-[880px] text-sm">
+                <tbody>
+                  <SkeletonTableRows rows={4} cols={9} />
+                </tbody>
+              </table>
+            </div>
           ) : unsupported ? null : error ? null : players.length === 0 ? (
             <div className="rounded-xl border border-dashed border-line bg-base-850/50 px-6 py-14 text-center text-sm text-ink-faint">
               Belum ada player yang pernah bergabung.
@@ -595,6 +609,7 @@ export function PlayerManager({ serverId, canSendCommand, canEditFiles }: Player
                               canSendCommand={canSendCommand}
                               canEditFiles={canEditFiles}
                               busy={busyUuid === player.uuid}
+                              busyAction={busyUuid === player.uuid ? busyAction : null}
                               onAction={(action) =>
                                 void sendAction(player.uuid, action, { name: player.name })
                               }
@@ -776,6 +791,7 @@ export function PlayerManager({ serverId, canSendCommand, canEditFiles }: Player
                   canSendCommand={canSendCommand}
                   canEditFiles={canEditFiles}
                   busy={busyUuid === detail.uuid}
+                  busyAction={busyUuid === detail.uuid ? busyAction : null}
                   align="start"
                   onAction={(action) =>
                     void sendAction(detail.uuid, action, { name: detail.name })
@@ -1111,6 +1127,7 @@ function PlayerActions({
   canSendCommand,
   canEditFiles,
   busy,
+  busyAction = null,
   onAction,
   onBan,
   onClear,
@@ -1129,6 +1146,7 @@ function PlayerActions({
   canSendCommand: boolean;
   canEditFiles: boolean;
   busy: boolean;
+  busyAction?: PlayerAction | null;
   onAction: (action: PlayerAction) => void;
   onBan: () => void;
   onClear: () => void;
@@ -1153,7 +1171,14 @@ function PlayerActions({
     <div className={`flex flex-wrap gap-1 ${align === 'end' ? 'justify-end' : ''}`}>
       {canSendCommand && (
         <>
-          <Button size="sm" variant="ghost" disabled={disabled} title={cmdTitle} onClick={() => onAction('kick')}>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={disabled}
+            loading={busyAction === 'kick'}
+            title={cmdTitle}
+            onClick={() => onAction('kick')}
+          >
             Kick
           </Button>
           {player.isBanned ? (
@@ -1161,6 +1186,7 @@ function PlayerActions({
               size="sm"
               variant="success"
               disabled={disabled}
+              loading={busyAction === 'unban'}
               title={cmdTitle}
               onClick={() => onAction('unban')}
             >
@@ -1175,6 +1201,7 @@ function PlayerActions({
             size="sm"
             variant="ghost"
             disabled={disabled}
+            loading={busyAction === 'op' || busyAction === 'deop'}
             title={cmdTitle}
             onClick={() => onAction(player.isOp ? 'deop' : 'op')}
           >
@@ -1184,6 +1211,7 @@ function PlayerActions({
             size="sm"
             variant="ghost"
             disabled={disabled}
+            loading={busyAction === 'whitelist-add' || busyAction === 'whitelist-remove'}
             title={cmdTitle}
             onClick={() => onAction(player.isWhitelisted ? 'whitelist-remove' : 'whitelist-add')}
           >

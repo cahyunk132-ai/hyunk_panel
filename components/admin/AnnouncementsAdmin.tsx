@@ -236,7 +236,7 @@ export function AnnouncementsAdmin() {
               <option value="expired">Kedaluwarsa</option>
             </Select>
           </div>
-          <Button variant="secondary" size="sm" onClick={() => void load()}>
+          <Button variant="secondary" size="sm" onClick={() => void load()} loading={loading}>
             Refresh
           </Button>
           <Button size="sm" onClick={openCreate}>

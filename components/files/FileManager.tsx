@@ -6,9 +6,12 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
-import { PageLoader } from '@/components/ui/Spinner';
+import { SkeletonTableRows } from '@/components/ui/Skeleton';
+import { ProgressBar } from '@/components/ui/ProgressBar';
 import { FileEditor } from './FileEditor';
 import { formatBytes } from '@/lib/utils/format';
+import { toast, updateToast } from '@/lib/utils/toast';
+import { uploadWithProgress } from '@/lib/utils/upload';
 
 interface FileManagerProps {
   serverId: string;
@@ -41,6 +44,8 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
   const [confirmDelete, setConfirmDelete] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  /** Progres upload aktif (null = tidak ada upload). */
+  const [uploadProgress, setUploadProgress] = useState<{ count: number; percent: number } | null>(null);
   const uploadInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(
@@ -95,16 +100,26 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
     return json;
   }
 
-  async function runAction(fn: () => Promise<unknown>, okMessage?: string) {
+  /**
+   * Jalankan aksi file lalu muat ulang direktori. Bila `loadingMessage` diisi,
+   * toast "sedang diproses…" akan berubah menjadi sukses/gagal setelah selesai.
+   */
+  async function runAction(fn: () => Promise<unknown>, okMessage?: string, loadingMessage?: string) {
     setBusy(true);
     setNotice(null);
     setError(null);
+    const toastId = loadingMessage ? toast.loading(loadingMessage) : null;
     try {
       await fn();
       if (okMessage) setNotice(okMessage);
+      if (toastId !== null) updateToast(toastId, okMessage ?? 'Selesai', 'success');
+      else if (okMessage) toast.success(okMessage);
       await load(directory);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Operasi gagal');
+      const message = err instanceof Error ? err.message : 'Operasi gagal';
+      setError(message);
+      if (toastId !== null) updateToast(toastId, message, 'error');
+      else toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -125,8 +140,12 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
 
   async function upload(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
+    const count = fileList.length;
     setBusy(true);
     setError(null);
+    setNotice(null);
+    setUploadProgress({ count, percent: 0 });
+    const toastId = toast.loading(`Mengupload ${count} file… 0%`);
     try {
       const res = await fetch(`/api/servers/${serverId}/files/upload`, {
         method: 'POST',
@@ -137,14 +156,29 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
       if (!res.ok) throw new Error(json.error || 'Gagal membuat URL upload');
       const form = new FormData();
       Array.from(fileList).forEach((f) => form.append('files', f));
-      const up = await fetch(json.url as string, { method: 'POST', body: form });
+      let lastPercent = -1;
+      const up = await uploadWithProgress(json.url as string, form, (percent) => {
+        if (percent === lastPercent) return;
+        lastPercent = percent;
+        setUploadProgress({ count, percent });
+        updateToast(
+          toastId,
+          percent >= 100 ? `Memproses ${count} file di node…` : `Mengupload ${count} file… ${percent}%`,
+          'loading',
+        );
+      });
       if (!up.ok) throw new Error(`Upload gagal (Wings ${up.status})`);
-      setNotice(`${fileList.length} file terupload`);
+      const done = `${count} file terupload`;
+      setNotice(done);
+      updateToast(toastId, done, 'success');
       await load(directory);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload gagal');
+      const message = err instanceof Error ? err.message : 'Upload gagal';
+      setError(message);
+      updateToast(toastId, message, 'error');
     } finally {
       setBusy(false);
+      setUploadProgress(null);
       if (uploadInput.current) uploadInput.current.value = '';
     }
   }
@@ -200,11 +234,23 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
             />
           </>
         )}
-        <Button size="sm" variant="ghost" onClick={() => load(directory)}>
-          ↻
+        <Button size="sm" variant="ghost" onClick={() => load(directory)} loading={loading} aria-label="Muat ulang direktori">
+          {loading ? null : '↻'}
         </Button>
       </div>
 
+      {uploadProgress && (
+        <div className="fade-in-up rounded-lg border border-accent/25 bg-accent-soft px-3 py-2.5">
+          <ProgressBar
+            value={uploadProgress.percent}
+            label={
+              uploadProgress.percent >= 100
+                ? `Memproses ${uploadProgress.count} file di node…`
+                : `Mengupload ${uploadProgress.count} file`
+            }
+          />
+        </div>
+      )}
       {notice && (
         <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-300">
           {notice}
@@ -226,16 +272,18 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
               <Button
                 size="sm"
                 variant="secondary"
+                loading={busy}
                 onClick={() =>
                   runAction(
                     () => apiAction('/compress', { root: directory, files: selectedArr }),
                     'File dikompres',
+                    'Mengompres file…',
                   )
                 }
               >
                 Kompres
               </Button>
-              <Button size="sm" variant="danger" onClick={() => setConfirmDelete(selectedArr)}>
+              <Button size="sm" variant="danger" onClick={() => setConfirmDelete(selectedArr)} disabled={busy}>
                 Hapus
               </Button>
             </>
@@ -248,10 +296,7 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
 
       {/* Tabel file */}
       <div className="overflow-hidden rounded-xl border border-line bg-base-850">
-        {loading ? (
-          <PageLoader label="Membaca direktori…" />
-        ) : (
-          <table className="w-full text-sm">
+        <table className="w-full text-sm" aria-busy={loading}>
             <thead>
               <tr className="border-b border-line-soft text-left text-[11px] uppercase tracking-wide text-ink-faint">
                 <th className="hidden w-8 px-3 py-2.5 md:table-cell" />
@@ -262,7 +307,8 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
               </tr>
             </thead>
             <tbody>
-              {directory !== '/' && (
+              {loading && <SkeletonTableRows rows={6} cols={5} hideOnMobile={[0, 2, 3]} />}
+              {!loading && directory !== '/' && (
                 <tr
                   className="cursor-pointer border-b border-line-soft text-ink-muted hover:bg-base-800"
                   onClick={() => setDirectory(parentPath(directory))}
@@ -273,7 +319,7 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
                   <td className="md:hidden" />
                 </tr>
               )}
-              {sorted.map((f) => {
+              {!loading && sorted.map((f) => {
                 const fullPath = joinPath(directory, f.name);
                 const isArchive = ARCHIVE_RE.test(f.name);
                 return (
@@ -347,6 +393,7 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
                                         action: 'decompress',
                                       }),
                                     'Arsip diekstrak',
+                                    'Mengekstrak arsip…',
                                   )
                                 }
                                 className="rounded px-1.5 py-1 text-ink-muted hover:text-accent"
@@ -369,7 +416,7 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
                   </tr>
                 );
               })}
-              {sorted.length === 0 && !loading && (
+              {!loading && sorted.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-3 py-10 text-center text-sm text-ink-faint">
                     Direktori kosong
@@ -377,8 +424,7 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
                 </tr>
               )}
             </tbody>
-          </table>
-        )}
+        </table>
       </div>
 
       {/* Editor */}
@@ -402,6 +448,7 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
               () =>
                 apiAction('/rename', { root: directory, from: renaming.name, to: renaming.value }),
               'File direname',
+              'Mengganti nama…',
             );
             setRenaming(null);
           }}
@@ -436,11 +483,16 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
             const name = newItem.value;
             setNewItem(null);
             if (newItem.type === 'dir') {
-              runAction(() => apiAction('', { path: directory, name }), `Folder "${name}" dibuat`);
+              runAction(
+                () => apiAction('', { path: directory, name }),
+                `Folder "${name}" dibuat`,
+                'Membuat folder…',
+              );
             } else {
               runAction(
                 () => apiAction('/contents', { file: joinPath(directory, name), content: '' }),
                 `File "${name}" dibuat`,
+                'Membuat file…',
               );
             }
           }}
@@ -483,6 +535,7 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
               runAction(
                 () => apiAction('/delete', { root: directory, files: filesToDelete }),
                 'File dihapus',
+                'Menghapus file…',
               );
             }}
           >

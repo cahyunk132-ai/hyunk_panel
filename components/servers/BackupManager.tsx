@@ -5,8 +5,9 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal, ConfirmDangerModal } from '@/components/ui/Modal';
 import { Input, Field, Textarea } from '@/components/ui/Input';
-import { PageLoader } from '@/components/ui/Spinner';
+import { SkeletonTableRows } from '@/components/ui/Skeleton';
 import { formatBytes, formatRelativeTime } from '@/lib/utils/format';
+import { toastOperation } from '@/lib/utils/toast';
 import type { BackupRow } from '@/types';
 
 export function BackupManager({
@@ -53,13 +54,21 @@ export function BackupManager({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/servers/${serverId}/backups`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name || undefined, ignored_files: ignored }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || 'Gagal membuat backup');
+      await toastOperation(
+        async () => {
+          const res = await fetch(`/api/servers/${serverId}/backups`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name || undefined, ignored_files: ignored }),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || 'Gagal membuat backup');
+        },
+        {
+          loading: 'Membuat backup server…',
+          success: 'Backup dibuat — status akan diperbarui di daftar',
+        },
+      );
       setCreateOpen(false);
       setName('');
       setIgnored('');
@@ -87,13 +96,21 @@ export function BackupManager({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/servers/${serverId}/backups/${backup.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ truncate }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || 'Gagal restore');
+      await toastOperation(
+        async () => {
+          const res = await fetch(`/api/servers/${serverId}/backups/${backup.id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ truncate }),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || 'Gagal restore');
+        },
+        {
+          loading: `Merestore backup "${backup.name ?? backup.uuid ?? ''}"…`,
+          success: 'Backup berhasil direstore',
+        },
+      );
       setRestoring(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gagal');
@@ -106,9 +123,14 @@ export function BackupManager({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/servers/${serverId}/backups/${backup.id}`, { method: 'DELETE' });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || 'Gagal menghapus');
+      await toastOperation(
+        async () => {
+          const res = await fetch(`/api/servers/${serverId}/backups/${backup.id}`, { method: 'DELETE' });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || 'Gagal menghapus');
+        },
+        { loading: 'Menghapus backup…', success: 'Backup dihapus' },
+      );
       setDeleting(null);
       setTyped('');
       await load();
@@ -136,8 +158,14 @@ export function BackupManager({
         </div>
       )}
 
-      {loading ? (
-        <PageLoader label="Memuat backup…" />
+      {loading && backups.length === 0 ? (
+        <div className="overflow-x-auto rounded-xl border border-line bg-base-850" role="status" aria-busy="true" aria-label="Memuat daftar backup">
+          <table className="w-full min-w-[620px] text-sm">
+            <tbody>
+              <SkeletonTableRows rows={4} cols={5} />
+            </tbody>
+          </table>
+        </div>
       ) : backups.length === 0 ? (
         <div className="rounded-xl border border-dashed border-line bg-base-850/50 px-6 py-14 text-center text-sm text-ink-faint">
           Belum ada backup.
@@ -163,7 +191,9 @@ export function BackupManager({
                   </td>
                   <td className="px-4 py-3">
                     {b.is_successful === null ? (
-                      <Badge tone="yellow">Berjalan…</Badge>
+                      <Badge tone="yellow" spinning>
+                        Berjalan…
+                      </Badge>
                     ) : b.is_successful ? (
                       <Badge tone="green">Sukses</Badge>
                     ) : (
