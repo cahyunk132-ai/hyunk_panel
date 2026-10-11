@@ -12,7 +12,69 @@ import {
   normalizeSubdomain,
   validateSubdomain,
 } from '@/lib/subdomains';
-import type { SubdomainAvailability, ServerSubdomainRow, SubdomainResponse } from '@/types';
+import type {
+  SubdomainAvailability,
+  SubdomainQuota,
+  ServerSubdomainRow,
+  SubdomainResponse,
+} from '@/types';
+
+const QUOTA_FULL_MESSAGE = 'Kuota subdomain penuh. Hapus subdomain lain untuk mendaftarkan yang baru.';
+
+function isQuotaFull(quota: SubdomainQuota | null): boolean {
+  return !!quota && !quota.unlimited && quota.limit !== null && quota.used >= quota.limit;
+}
+
+/** Info kuota subdomain user: "Subdomain kamu: X / 2" + badge + progress bar. */
+function QuotaCard({ quota }: { quota: SubdomainQuota }) {
+  const full = isQuotaFull(quota);
+  const limit = quota.limit ?? 0;
+  const remaining = Math.max(limit - quota.used, 0);
+  const percent = quota.unlimited || limit === 0 ? 0 : Math.min((quota.used / limit) * 100, 100);
+  const barColor = full ? 'bg-red-500' : quota.used > 0 ? 'bg-amber-400' : 'bg-emerald-500';
+
+  return (
+    <Card>
+      <div className="space-y-3 px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-ink-faint">Kuota subdomain</p>
+            <p className="mt-0.5 text-sm text-ink">
+              Subdomain kamu:{' '}
+              <span className="font-mono font-semibold">
+                {quota.used} / {quota.unlimited ? '∞' : limit}
+              </span>
+            </p>
+          </div>
+          {quota.unlimited ? (
+            <Badge tone="accent">Tanpa batas</Badge>
+          ) : full ? (
+            <Badge tone="red">Penuh</Badge>
+          ) : (
+            <Badge tone="green">Sisa {remaining}</Badge>
+          )}
+        </div>
+        {!quota.unlimited && (
+          <div
+            className="h-1.5 w-full overflow-hidden rounded-full bg-base-700"
+            role="progressbar"
+            aria-label="Pemakaian kuota subdomain"
+            aria-valuemin={0}
+            aria-valuemax={limit}
+            aria-valuenow={quota.used}
+          >
+            <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${percent}%` }} />
+          </div>
+        )}
+        <p className="text-[11px] text-ink-faint">
+          {quota.unlimited
+            ? 'Role kamu tidak dibatasi kuota subdomain.'
+            : `Dihitung dari semua server milikmu. Maksimal ${limit} subdomain per user.`}
+        </p>
+      </div>
+    </Card>
+  );
+}
 
 /** Tombol copy: ikon clipboard → centang selama 2 detik setelah berhasil. */
 function CopyButton({ value, label }: { value: string; label: string }) {
@@ -97,6 +159,7 @@ export function SubdomainManager({
 }) {
   const [subdomain, setSubdomain] = useState<ServerSubdomainRow | null>(null);
   const [defaultPort, setDefaultPort] = useState<number | null>(null);
+  const [quota, setQuota] = useState<SubdomainQuota | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -123,10 +186,23 @@ export function SubdomainManager({
       if (!res.ok) throw new Error(data.error ?? 'Gagal memuat subdomain');
       setSubdomain(data.subdomain);
       setDefaultPort(data.default_port);
+      setQuota(data.quota ?? null);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Gagal memuat subdomain');
     } finally {
       setLoading(false);
+    }
+  }, [serverId]);
+
+  /** Muat ulang kuota saja (setelah daftar/hapus) tanpa spinner halaman. */
+  const refreshQuota = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/servers/${serverId}/subdomain`);
+      if (!res.ok) return;
+      const data = (await res.json()) as SubdomainResponse;
+      setQuota(data.quota ?? null);
+    } catch {
+      // Abaikan — kuota akan tersinkron lagi saat halaman dimuat ulang.
     }
   }, [serverId]);
 
@@ -192,11 +268,21 @@ export function SubdomainManager({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subdomain: normalizeSubdomain(trimmed) }),
       });
-      const data = (await res.json()) as { subdomain?: ServerSubdomainRow; error?: string; message?: string };
-      if (!res.ok) throw new Error(data.error ?? 'Gagal mendaftarkan subdomain');
+      const data = (await res.json()) as {
+        subdomain?: ServerSubdomainRow;
+        error?: string;
+        message?: string;
+        quota?: SubdomainQuota;
+      };
+      if (!res.ok) {
+        // 429 = kuota habis → sinkronkan kuota supaya form diganti pesan "penuh".
+        if (res.status === 429 && data.quota) setQuota(data.quota);
+        throw new Error(data.error ?? 'Gagal mendaftarkan subdomain');
+      }
       setSubdomain(data.subdomain ?? null);
       setName('');
       setAvailability(null);
+      void refreshQuota();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Gagal mendaftarkan subdomain');
     } finally {
@@ -216,6 +302,8 @@ export function SubdomainManager({
       const data = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? 'Gagal menghapus subdomain');
       setSubdomain(null);
+      setFormError(null);
+      void refreshQuota();
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Gagal menghapus subdomain');
     } finally {
@@ -225,6 +313,7 @@ export function SubdomainManager({
 
   const previewName = normalizeSubdomain(name) || 'nama';
   const previewDomain = buildFullDomain(previewName);
+  const quotaFull = isQuotaFull(quota);
 
   return (
     <div className="space-y-4">
@@ -279,14 +368,51 @@ export function SubdomainManager({
           ) : (
             <p className="text-sm text-ink-muted">
               Belum ada subdomain terdaftar untuk server ini.
-              {canManage ? ' Daftarkan satu lewat form di bawah.' : ' Pemilik server dapat mendaftarkannya.'}
+              {!canManage
+                ? ' Pemilik server dapat mendaftarkannya.'
+                : quotaFull
+                  ? ' Kuota subdomain kamu sudah penuh.'
+                  : ' Daftarkan satu lewat form di bawah.'}
             </p>
           )}
         </div>
       </Card>
 
+      {/* ── Info kuota subdomain user ── */}
+      {canManage && !loading && !loadError && quota && <QuotaCard quota={quota} />}
+
+      {/* ── Kuota penuh: form disembunyikan ── */}
+      {canManage && !loading && !loadError && !subdomain && quotaFull && (
+        <Card>
+          <CardHeader
+            title="Daftar subdomain baru"
+            subtitle={`Pilih nama untuk ${BASE_DOMAIN} — hanya huruf kecil, angka, dan strip (3-32 karakter).`}
+          />
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+            <div className="flex items-start gap-2.5">
+              <svg
+                className="mt-0.5 h-4 w-4 shrink-0 text-red-400"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 8v4M12 16h.01" />
+              </svg>
+              <p className="text-sm text-red-400">{QUOTA_FULL_MESSAGE}</p>
+            </div>
+            <Button type="button" disabled title={QUOTA_FULL_MESSAGE}>
+              Register
+            </Button>
+          </div>
+        </Card>
+      )}
+
       {/* ── Form daftar subdomain baru ── */}
-      {canManage && !subdomain && (
+      {canManage && !loading && !loadError && !subdomain && !quotaFull && (
         <Card>
           <CardHeader
             title="Daftar subdomain baru"

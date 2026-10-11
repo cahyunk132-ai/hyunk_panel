@@ -71,3 +71,19 @@ export function buildFullDomain(subdomain: string): string {
 export function normalizeSubdomain(raw: string): string {
   return raw.trim().toLowerCase();
 }
+
+// ─── Kuota subdomain per user ───────────────────────────────────────────────
+
+/**
+ * Batas subdomain per user (dihitung dari SEMUA server yang dia miliki).
+ * Berlaku untuk role moderator, user, dan subuser.
+ */
+export const SUBDOMAIN_QUOTA_PER_USER = 2;
+
+/** Owner Panel & Admin tidak dibatasi kuota subdomain. */
+export function hasUnlimitedSubdomainQuota(role: string): boolean {
+  return role === 'owner_panel' || role === 'admin';
+}
+
+/** Pesan error (HTTP 429) saat kuota subdomain user sudah habis. */
+export const SUBDOMAIN_QUOTA_EXCEEDED_MESSAGE = `Kamu sudah mencapai batas ${SUBDOMAIN_QUOTA_PER_USER} subdomain. Hapus subdomain lain untuk mendaftarkan yang baru.`;

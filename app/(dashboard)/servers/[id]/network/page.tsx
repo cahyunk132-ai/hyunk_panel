@@ -10,7 +10,8 @@ export const metadata = { title: 'Server Network' };
 /**
  * /servers/{id}/network — Subdomain Manager.
  * Subdomain aktif + form daftar subdomain baru yang diarahkan reverse proxy
- * Wings ke IP:port server ini. Kelola: pemilik server / admin.
+ * Wings ke IP:port server ini. Kelola: pemilik server (semua role, kuota
+ * 2 subdomain/user untuk moderator/user/subuser) atau Owner Panel/Admin (tanpa batas).
  */
 export default async function NetworkPage({ params }: { params: { id: string } }) {
   const user = await getSessionUser();

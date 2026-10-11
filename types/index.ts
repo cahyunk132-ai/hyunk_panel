@@ -126,6 +126,15 @@ export interface SubdomainResponse {
   base_domain: string;
   target: { host: string; port: number } | null;
   default_port: number | null;
+  /** Kuota subdomain milik user yang sedang login (semua server miliknya). */
+  quota: SubdomainQuota;
+}
+
+/** Kuota subdomain per user. `limit` null = tanpa batas (Owner Panel/Admin). */
+export interface SubdomainQuota {
+  used: number;
+  limit: number | null;
+  unlimited: boolean;
 }
 
 /** Response GET /api/servers/{id}/subdomain?check=nama. */

@@ -6,19 +6,48 @@ import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { logActivity } from '@/lib/wings/resolve';
 import {
   BASE_DOMAIN,
+  SUBDOMAIN_QUOTA_EXCEEDED_MESSAGE,
+  SUBDOMAIN_QUOTA_PER_USER,
   buildFullDomain,
+  hasUnlimitedSubdomainQuota,
   normalizeSubdomain,
   validateSubdomain,
 } from '@/lib/subdomains';
-import type { ServerRow, ServerSubdomainRow } from '@/types';
+import type { ServerRow, ServerSubdomainRow, SubdomainQuota } from '@/types';
 
 export const runtime = 'nodejs';
 
 const SUBDOMAIN_COLUMNS = 'id, server_id, subdomain, full_domain, port, created_at, updated_at';
 
-/** Kelola subdomain = Owner Panel/Admin atau pemilik server (lihat migrasi 006). */
+/**
+ * Kelola subdomain: semua role boleh, tapi hanya untuk server miliknya sendiri.
+ * Owner Panel/Admin boleh kelola subdomain server siapa pun (lihat migrasi 006).
+ */
 function canManageSubdomain(user: SessionUser, server: ServerRow): boolean {
   return isPanelAdmin(user.role) || server.owner_id === user.id;
+}
+
+/**
+ * Jumlah subdomain milik user, dihitung dari SEMUA server yang dia miliki:
+ *   SELECT COUNT(*) FROM server_subdomains ss
+ *   JOIN servers s ON s.id = ss.server_id
+ *   WHERE s.owner_id = [user_id]
+ */
+async function countUserSubdomains(userId: string): Promise<number> {
+  const service = getSupabaseServiceClient();
+  const { count, error } = await service
+    .from('server_subdomains')
+    .select('id, servers!inner(owner_id)', { count: 'exact', head: true })
+    .eq('servers.owner_id', userId);
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
+/** Kuota subdomain user yang sedang login. Owner Panel/Admin = tanpa batas. */
+async function getSubdomainQuota(user: SessionUser): Promise<SubdomainQuota> {
+  const used = await countUserSubdomains(user.id);
+  const unlimited = hasUnlimitedSubdomainQuota(user.role);
+  return { used, limit: unlimited ? null : SUBDOMAIN_QUOTA_PER_USER, unlimited };
 }
 
 /** Port tujuan reverse proxy: port allocation utama server. */
@@ -95,6 +124,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     });
   }
 
+  let quota: SubdomainQuota;
   const [{ data: subdomainRow, error }, targetPort] = await Promise.all([
     service
       .from('server_subdomains')
@@ -104,6 +134,14 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     resolveTargetPort(result.server),
   ]);
   if (error) return Response.json({ error: error.message }, { status: 500 });
+  try {
+    quota = await getSubdomainQuota(user);
+  } catch (err) {
+    return Response.json(
+      { error: err instanceof Error ? err.message : 'Gagal menghitung kuota subdomain' },
+      { status: 500 },
+    );
+  }
 
   return Response.json({
     subdomain: (subdomainRow as ServerSubdomainRow | null) ?? null,
@@ -112,12 +150,17 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       ? { host: subdomainRow.full_domain, port: (subdomainRow as ServerSubdomainRow).port }
       : null,
     default_port: targetPort,
+    quota,
   });
 }
 
 /**
  * POST /api/servers/{id}/subdomain — daftarkan subdomain baru untuk server.
  * Body: { subdomain: string, port?: number }. Port default = port allocation utama.
+ *
+ * Semua user boleh mendaftarkan subdomain untuk server MILIKNYA sendiri.
+ * Kuota: moderator/user/subuser maks. SUBDOMAIN_QUOTA_PER_USER subdomain
+ * (total dari semua server miliknya) → 429 bila habis. Owner Panel/Admin tanpa batas.
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   const user = await requireUser();
@@ -128,9 +171,31 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   if (!canManageSubdomain(user, server)) {
     return Response.json(
-      { error: 'Hanya pemilik server atau admin yang dapat mengelola subdomain' },
+      { error: 'Kamu hanya dapat mendaftarkan subdomain untuk server milikmu sendiri' },
       { status: 403 },
     );
+  }
+
+  // Cek kuota sebelum register (Owner Panel/Admin dikecualikan).
+  if (!hasUnlimitedSubdomainQuota(user.role)) {
+    let used: number;
+    try {
+      used = await countUserSubdomains(user.id);
+    } catch (err) {
+      return Response.json(
+        { error: err instanceof Error ? err.message : 'Gagal menghitung kuota subdomain' },
+        { status: 500 },
+      );
+    }
+    if (used >= SUBDOMAIN_QUOTA_PER_USER) {
+      return Response.json(
+        {
+          error: SUBDOMAIN_QUOTA_EXCEEDED_MESSAGE,
+          quota: { used, limit: SUBDOMAIN_QUOTA_PER_USER, unlimited: false } satisfies SubdomainQuota,
+        },
+        { status: 429 },
+      );
+    }
   }
 
   const body = (await request.json().catch(() => null)) as
@@ -190,6 +255,26 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     return Response.json({ error: error.message }, { status: 500 });
   }
 
+  // Cek ulang setelah insert: dua request paralel (server berbeda) bisa lolos
+  // cek awal bersamaan. Bila total melewati kuota, batalkan insert ini.
+  if (!hasUnlimitedSubdomainQuota(user.role)) {
+    const usedAfter = await countUserSubdomains(user.id).catch(() => null);
+    if (usedAfter !== null && usedAfter > SUBDOMAIN_QUOTA_PER_USER) {
+      await service.from('server_subdomains').delete().eq('id', (created as ServerSubdomainRow).id);
+      return Response.json(
+        {
+          error: SUBDOMAIN_QUOTA_EXCEEDED_MESSAGE,
+          quota: {
+            used: usedAfter - 1,
+            limit: SUBDOMAIN_QUOTA_PER_USER,
+            unlimited: false,
+          } satisfies SubdomainQuota,
+        },
+        { status: 429 },
+      );
+    }
+  }
+
   await logActivity({
     userId: user.id,
     serverId: server.id,
@@ -216,7 +301,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
 
   if (!canManageSubdomain(user, server)) {
     return Response.json(
-      { error: 'Hanya pemilik server atau admin yang dapat mengelola subdomain' },
+      { error: 'Kamu hanya dapat menghapus subdomain dari server milikmu sendiri' },
       { status: 403 },
     );
   }
