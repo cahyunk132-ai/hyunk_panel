@@ -72,18 +72,17 @@ export function normalizeSubdomain(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
-// ─── Kuota subdomain per user ───────────────────────────────────────────────
+// ─── Aturan subdomain per server ────────────────────────────────────────────
+// TIDAK ADA kuota per user: satu server hanya boleh punya SATU subdomain aktif,
+// dan siapa pun yang punya akses ke server itu (owner, anggota `server_users`,
+// atau Owner Panel/Admin) boleh mendaftarkan serta menghapusnya.
+// Aturan aksesnya ada di '@/lib/subdomains/access'.
+
+/** Pesan HTTP 409 saat server yang sudah punya subdomain didaftarkan lagi. */
+export const SERVER_HAS_SUBDOMAIN_MESSAGE = 'Server ini sudah memiliki subdomain aktif';
 
 /**
- * Batas subdomain per user (dihitung dari SEMUA server yang dia miliki).
- * Berlaku untuk role moderator, user, dan subuser.
+ * Versi panjang untuk UI: form register disembunyikan saat server sudah punya
+ * subdomain aktif, dan ini alasan yang ditampilkan ke user.
  */
-export const SUBDOMAIN_QUOTA_PER_USER = 2;
-
-/** Owner Panel & Admin tidak dibatasi kuota subdomain. */
-export function hasUnlimitedSubdomainQuota(role: string): boolean {
-  return role === 'owner_panel' || role === 'admin';
-}
-
-/** Pesan error (HTTP 429) saat kuota subdomain user sudah habis. */
-export const SUBDOMAIN_QUOTA_EXCEEDED_MESSAGE = `Kamu sudah mencapai batas ${SUBDOMAIN_QUOTA_PER_USER} subdomain. Hapus subdomain lain untuk mendaftarkan yang baru.`;
+export const SERVER_HAS_SUBDOMAIN_HINT = `${SERVER_HAS_SUBDOMAIN_MESSAGE}. Hapus dulu untuk mendaftarkan yang baru.`;

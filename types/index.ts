@@ -120,21 +120,16 @@ export interface AdminSubdomainRow extends ServerSubdomainRow {
   owner_email: string | null;
 }
 
-/** Response GET /api/servers/{id}/subdomain. */
+/**
+ * Response GET /api/servers/{id}/subdomain.
+ * Tanpa info kuota: satu server hanya punya satu subdomain aktif dan tidak ada
+ * batas jumlah subdomain per user.
+ */
 export interface SubdomainResponse {
   subdomain: ServerSubdomainRow | null;
   base_domain: string;
   target: { host: string; port: number } | null;
   default_port: number | null;
-  /** Kuota subdomain user yang sedang login (semua server yang ia akses). */
-  quota: SubdomainQuota;
-}
-
-/** Kuota subdomain per user. `limit` null = tanpa batas (Owner Panel/Admin). */
-export interface SubdomainQuota {
-  used: number;
-  limit: number | null;
-  unlimited: boolean;
 }
 
 /** Response GET /api/servers/{id}/subdomain?check=nama. */
