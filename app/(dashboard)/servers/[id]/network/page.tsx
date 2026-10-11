@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { getServerByIdOrUuid, hasPermission } from '@/lib/auth/rbac';
-import { isPanelAdmin } from '@/lib/auth/roles';
+import { canManageSubdomainSafe } from '@/lib/subdomains/access';
 import { SubdomainManager } from '@/components/servers/SubdomainManager';
 
 export const dynamic = 'force-dynamic';
@@ -22,10 +22,11 @@ export default async function NetworkPage({ params }: { params: { id: string } }
   const canRead = await hasPermission(user, 'server.read', server.id);
   if (!canRead) notFound();
 
-  const canManage =
-    isPanelAdmin(user.role) ||
-    server.owner_id === user.id ||
-    (await hasPermission(user, 'server.read', server.id));
+  // Aturan yang SAMA dengan POST/DELETE /api/servers/{id}/subdomain
+  // (owner server, anggota via `server_users`, atau Owner Panel/Admin).
+  // Pakai salinan lokal = UI dan API bisa beda, dan buyer kehilangan tombol
+  // atau malah dapat 403.
+  const canManage = await canManageSubdomainSafe(user, server);
 
   return <SubdomainManager serverId={server.id} canManage={canManage} />;
 }

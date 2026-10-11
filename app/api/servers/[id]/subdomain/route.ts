@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
 import { requireUser, type SessionUser } from '@/lib/auth/session';
 import { checkPermission } from '@/lib/auth/rbac';
-import { isPanelAdmin } from '@/lib/auth/roles';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
+import { requireSubdomainAccess } from '@/lib/subdomains/access';
 import { logActivity } from '@/lib/wings/resolve';
 import {
   BASE_DOMAIN,
@@ -19,23 +19,11 @@ export const runtime = 'nodejs';
 
 const SUBDOMAIN_COLUMNS = 'id, server_id, subdomain, full_domain, port, created_at, updated_at';
 
-/**
- * Kelola subdomain: semua role boleh untuk server miliknya atau yang ditugaskan kepadanya.
- * Owner Panel/Admin boleh kelola subdomain server siapa pun (lihat migrasi 006).
- */
-async function canManageSubdomain(user: SessionUser, server: ServerRow): Promise<boolean> {
-  if (isPanelAdmin(user.role) || server.owner_id === user.id) return true;
-
-  // Cek apakah user punya assignment di server ini.
-  const supabase = getSupabaseServiceClient();
-  const { data } = await supabase
-    .from('server_users')
-    .select('user_id')
-    .eq('server_id', server.id)
-    .eq('user_id', user.id)
-    .maybeSingle();
-  return !!data;
-}
+// Aturan akses subdomain (siapa yang boleh daftar/hapus) ada di
+// '@/lib/subdomains/access' supaya dipakai API route INI dan halaman
+// /servers/{id}/network dari satu sumber kebenaran — jangan bikin salinan
+// lokal lagi: dulu salinan sync yang hanya cek `servers.owner_id` di sini
+// membuat buyer (akses via `server_users`) kena 403.
 
 /** Nama SQL function penghitung kuota (dibuat di migrasi 008). */
 const COUNT_SUBDOMAINS_RPC = 'count_user_subdomains';
@@ -315,12 +303,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   if (result instanceof Response) return result;
   const server = result.server;
 
-  if (!(await canManageSubdomain(user, server))) {
-    return Response.json(
-      { error: 'Kamu hanya dapat mendaftarkan subdomain untuk server milikmu sendiri' },
-      { status: 403 },
-    );
-  }
+  const denied = await requireSubdomainAccess(user, server);
+  if (denied) return denied;
 
   // Cek kuota sebelum register (Owner Panel/Admin dikecualikan).
   if (!hasUnlimitedSubdomainQuota(user.role)) {
@@ -445,12 +429,8 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
   if (result instanceof Response) return result;
   const server = result.server;
 
-  if (!(await canManageSubdomain(user, server))) {
-    return Response.json(
-      { error: 'Kamu hanya dapat menghapus subdomain dari server milikmu sendiri' },
-      { status: 403 },
-    );
-  }
+  const denied = await requireSubdomainAccess(user, server);
+  if (denied) return denied;
 
   const service = getSupabaseServiceClient();
   const { data: removed, error } = await service
