@@ -30,6 +30,7 @@ function ResetPasswordForm() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
@@ -98,6 +99,18 @@ function ResetPasswordForm() {
     };
   }, [searchParams]);
 
+  useEffect(() => {
+    return () => {
+      // Kalau user meninggalkan halaman tanpa submit → hapus sesi recovery
+      // (cancel/close/navigasi) supaya user tetap dalam keadaan logout.
+      if (!submitted) {
+        const supabase = getSupabaseBrowserClient();
+        void supabase.auth.signOut();
+        void fetch('/api/auth/signout', { method: 'POST' }).catch(() => undefined);
+      }
+    };
+  }, [submitted]);
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -121,6 +134,10 @@ function ResetPasswordForm() {
       // dari /login ke /dashboard, jadi session harus dibuang dulu.
       await supabase.auth.signOut();
       await fetch('/api/auth/signout', { method: 'POST' }).catch(() => undefined);
+
+      // Tandai sudah submit supaya cleanup useEffect tidak signOut lagi saat
+      // unmount (sessinya memang sudah di atas; flag ini untuk kepastian).
+      setSubmitted(true);
 
       router.replace('/login?reset=success');
       router.refresh();
