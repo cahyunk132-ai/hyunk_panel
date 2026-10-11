@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { Spinner } from '@/components/ui/Spinner';
+import { startNavigationProgress } from '@/components/layout/NavigationProgress';
 import type { UserRole } from '@/types';
 
 interface NavItem {
@@ -179,6 +181,7 @@ export function Sidebar({
 
   async function signOut() {
     setSigningOut(true);
+    startNavigationProgress();
     try {
       await fetch('/api/auth/signout', { method: 'POST' });
     } finally {
@@ -243,9 +246,11 @@ export function Sidebar({
             type="button"
             onClick={signOut}
             disabled={signingOut}
-            className="rounded-lg border border-line px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+            aria-busy={signingOut || undefined}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
           >
-            {signingOut ? '…' : 'Logout'}
+            {signingOut && <Spinner size="sm" tone="inherit" className="h-3 w-3" />}
+            {signingOut ? 'Keluar…' : 'Logout'}
           </button>
         </div>
         <p className="text-[10px] leading-relaxed text-ink-faint">

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { PageLoader } from '@/components/ui/Spinner';
+import { toastOperation } from '@/lib/utils/toast';
 import { formatBytes, formatRelativeTime } from '@/lib/utils/format';
 import type { BackupInterval, BackupLogRow, BackupLogStatus, BackupScheduleRow } from '@/types';
 
@@ -56,13 +57,21 @@ export function BackupSchedulesAdmin() {
     setRunningId(schedule.id);
     setError(null);
     try {
-      const res = await fetch('/api/admin/backups/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ schedule_id: schedule.id }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || 'Gagal menjalankan backup');
+      await toastOperation(
+        async () => {
+          const res = await fetch('/api/admin/backups/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ schedule_id: schedule.id }),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || 'Gagal menjalankan backup');
+        },
+        {
+          loading: `Menjalankan backup untuk ${schedule.servers?.name ?? 'server'}…`,
+          success: `Backup ${schedule.servers?.name ?? 'server'} selesai dijalankan`,
+        },
+      );
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gagal');
@@ -164,7 +173,8 @@ export function BackupSchedulesAdmin() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        disabled={!s.is_enabled || runningId === s.id}
+                        disabled={!s.is_enabled}
+                        loading={runningId === s.id}
                         onClick={() => forceRun(s)}
                       >
                         {runningId === s.id ? 'Running…' : '▶ Force run'}

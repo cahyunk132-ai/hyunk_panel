@@ -7,12 +7,14 @@ import {
   subscribeToasts,
   type ToastTone,
 } from '@/lib/utils/toast';
+import { Spinner } from './Spinner';
 
 const toneClasses: Record<ToastTone, string> = {
   success: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-300',
   error: 'border-red-500/35 bg-red-500/10 text-red-300',
   warning: 'border-amber-500/35 bg-amber-500/10 text-amber-300',
   info: 'border-sky-500/35 bg-sky-500/10 text-sky-300',
+  loading: 'border-accent/35 bg-accent-soft text-accent',
 };
 
 const iconPath: Record<ToastTone, string> = {
@@ -20,6 +22,7 @@ const iconPath: Record<ToastTone, string> = {
   error: 'M18 6 6 18M6 6l12 12',
   warning: 'M12 9v4M12 17h.01M10.3 4.3 2.6 17.5A1.6 1.6 0 0 0 4 20h16a1.6 1.6 0 0 0 1.4-2.5L13.7 4.3a1.6 1.6 0 0 0-3.4 0Z',
   info: 'M12 11v5M12 8h.01',
+  loading: '',
 };
 
 /**
@@ -41,18 +44,22 @@ export function Toaster() {
           key={item.id}
           className={`fade-in-up pointer-events-auto flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-xs shadow-glow backdrop-blur ${toneClasses[item.tone]}`}
         >
-          <svg
-            className="mt-px h-4 w-4 shrink-0"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d={iconPath[item.tone]} />
-          </svg>
+          {item.tone === 'loading' ? (
+            <Spinner size="sm" className="mt-px h-4 w-4 shrink-0" />
+          ) : (
+            <svg
+              className="mt-px h-4 w-4 shrink-0"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d={iconPath[item.tone]} />
+            </svg>
+          )}
           <p className="min-w-0 flex-1 leading-relaxed text-ink">{item.message}</p>
           <button
             type="button"

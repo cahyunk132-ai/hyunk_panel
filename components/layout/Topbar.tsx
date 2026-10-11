@@ -5,6 +5,8 @@ import { useState } from 'react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { RoleBadge } from '@/components/users/RoleBadge';
 import { AppearanceButton } from '@/components/theme/AppearanceDrawer';
+import { Spinner } from '@/components/ui/Spinner';
+import { startNavigationProgress } from '@/components/layout/NavigationProgress';
 import type { UserRole } from '@/types';
 
 export function Topbar({
@@ -23,6 +25,7 @@ export function Topbar({
 
   async function signOut() {
     setSigningOut(true);
+    startNavigationProgress();
     try {
       getSupabaseBrowserClient();
       await fetch('/api/auth/signout', { method: 'POST' });
@@ -76,7 +79,7 @@ export function Topbar({
           className="hidden rounded-lg border border-line px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50 md:inline-flex"
           title="Keluar"
         >
-          {signingOut ? '…' : 'Logout'}
+          {signingOut ? <Spinner size="sm" tone="inherit" className="h-3 w-3" /> : 'Logout'}
         </button>
       </div>
     </header>

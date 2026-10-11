@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Input, Field, Select, Textarea } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/Spinner';
+import { SkeletonRegion, Skeleton } from '@/components/ui/Skeleton';
+import { toastOperation } from '@/lib/utils/toast';
 import { formatRelativeTime } from '@/lib/utils/format';
 import type { BackupInterval, BackupScheduleRow, PublicStorageProvider } from '@/types';
 
@@ -83,21 +85,27 @@ export function AutoBackupSchedule({
     setError(null);
     setNotice(null);
     try {
-      const res = await fetch(`/api/servers/${serverId}/backup-schedule`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storage_provider_id: providerId,
-          is_enabled: enabled,
-          interval,
-          time_of_day: timeOfDay,
-          day_of_week: interval === 'weekly' ? Number(dayOfWeek) : null,
-          retention: Number(retention),
-          ignore_files: ignoreFiles,
-        }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || 'Gagal menyimpan jadwal');
+      const json = await toastOperation(
+        async () => {
+          const res = await fetch(`/api/servers/${serverId}/backup-schedule`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              storage_provider_id: providerId,
+              is_enabled: enabled,
+              interval,
+              time_of_day: timeOfDay,
+              day_of_week: interval === 'weekly' ? Number(dayOfWeek) : null,
+              retention: Number(retention),
+              ignore_files: ignoreFiles,
+            }),
+          });
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(body.error || 'Gagal menyimpan jadwal');
+          return body;
+        },
+        { loading: 'Menyimpan jadwal backup…', success: 'Jadwal auto backup tersimpan' },
+      );
       setSchedule(json.schedule);
       setNotice('Jadwal auto backup tersimpan.');
     } catch (err) {
@@ -129,9 +137,17 @@ export function AutoBackupSchedule({
     setError(null);
     setNotice(null);
     try {
-      const res = await fetch(`/api/servers/${serverId}/backup-now`, { method: 'POST' });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || 'Gagal menjalankan backup');
+      await toastOperation(
+        async () => {
+          const res = await fetch(`/api/servers/${serverId}/backup-now`, { method: 'POST' });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || 'Gagal menjalankan backup');
+        },
+        {
+          loading: 'Menjalankan backup…',
+          success: 'Backup berjalan — hasilnya muncul di Backup History',
+        },
+      );
       setNotice('Backup berjalan — hasilnya muncul di Backup History di bawah.');
       await load();
     } catch (err) {
@@ -141,7 +157,20 @@ export function AutoBackupSchedule({
     }
   }
 
-  if (loading) return <PageLoader label="Memuat jadwal backup…" />;
+  if (loading) {
+    return (
+      <SkeletonRegion label="Memuat jadwal backup" className="rounded-xl border border-line bg-base-850 p-4">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="mt-2 h-3 w-64" />
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <Skeleton className="h-9" />
+          <Skeleton className="h-9" />
+          <Skeleton className="h-9" />
+        </div>
+        <Skeleton className="mt-4 h-8 w-32" />
+      </SkeletonRegion>
+    );
+  }
 
   // Read-only untuk role tanpa permission `backup.schedule`.
   if (!canManage) {

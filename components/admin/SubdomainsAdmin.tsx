@@ -104,7 +104,7 @@ export function SubdomainsAdmin() {
               autoComplete="off"
             />
           </div>
-          <Button variant="secondary" size="sm" onClick={() => void load()}>
+          <Button variant="secondary" size="sm" onClick={() => void load()} loading={loading}>
             Refresh
           </Button>
         </div>

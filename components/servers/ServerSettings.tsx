@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Input, Field, Select, Textarea } from '@/components/ui/Input';
 import { ConfirmDangerModal, Modal } from '@/components/ui/Modal';
 import type { AllocationRow, ServerRow } from '@/types';
+import { toast } from '@/lib/utils/toast';
 
 interface EnvRow {
   id: string;
@@ -165,6 +166,12 @@ export function ServerSettings({
     };
   }
 
+  /** Toast hasil aksi: hijau bila sukses, kuning bila tersimpan tapi Wings belum sinkron. */
+  function notifyOutcome(text: string, warn = false) {
+    if (warn) toast.warning(text);
+    else toast.success(text);
+  }
+
   async function persistConfiguration() {
     const response = await fetch(`/api/servers/${server.id}`, {
       method: 'PATCH',
@@ -182,14 +189,17 @@ export function ServerSettings({
     setError(null);
     try {
       const result = await persistConfiguration();
-      setMessage(
+      const text =
         result.wings_synced === false
           ? `Konfigurasi tersimpan di panel, tetapi Wings belum tersinkron: ${result.wings_sync_error ?? 'node tidak merespons'}`
-          : 'Konfigurasi tersimpan dan perubahan telah dikirim ke Wings.',
-      );
+          : 'Konfigurasi tersimpan dan perubahan telah dikirim ke Wings.';
+      setMessage(text);
+      notifyOutcome(text, result.wings_synced === false);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal menyimpan konfigurasi');
+      const message = err instanceof Error ? err.message : 'Gagal menyimpan konfigurasi';
+      setError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -207,16 +217,19 @@ export function ServerSettings({
       });
       const json = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(json.error || 'Gagal mengubah status server');
-      setMessage(
+      const text =
         json.wings_synced === false
           ? `Status panel berubah, tetapi Wings belum tersinkron: ${json.wings_sync_error ?? 'node tidak merespons'}`
           : server.is_suspended
             ? 'Server di-unsuspend.'
-            : 'Server disuspend.',
-      );
+            : 'Server disuspend.';
+      setMessage(text);
+      notifyOutcome(text, json.wings_synced === false);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal');
+      const message = err instanceof Error ? err.message : 'Gagal';
+      setError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -250,15 +263,17 @@ export function ServerSettings({
 
       setReinstallOpen(false);
       setReinstallTyped('');
-      setMessage(
-        syncWarning
-          ? `Reinstall dimulai, tetapi sinkronisasi konfigurasi Wings melaporkan: ${syncWarning}`
-          : 'Reinstall dimulai. Membuka Console untuk memantau proses…',
-      );
+      const text = syncWarning
+        ? `Reinstall dimulai, tetapi sinkronisasi konfigurasi Wings melaporkan: ${syncWarning}`
+        : 'Reinstall dimulai. Membuka Console untuk memantau proses…';
+      setMessage(text);
+      notifyOutcome(text, Boolean(syncWarning));
       router.replace(`/servers/${server.id}/console`);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal memulai reinstall');
+      const message = err instanceof Error ? err.message : 'Gagal memulai reinstall';
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -275,10 +290,13 @@ export function ServerSettings({
       });
       const json = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(json.error || 'Gagal menghapus server');
+      toast.success('Server dihapus');
       router.replace('/servers');
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal menghapus server');
+      const message = err instanceof Error ? err.message : 'Gagal menghapus server';
+      setError(message);
+      toast.error(message);
       setBusy(false);
     }
   }
@@ -297,14 +315,17 @@ export function ServerSettings({
       const json = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(json.error || 'Gagal menambahkan port');
       setSelectedAllocation('');
-      setAllocationMessage(
+      const text =
         json.wings_synced === false
           ? `Port berhasil ditambahkan, tetapi sinkronisasi Wings gagal: ${json.wings_sync_error ?? 'node tidak merespons'}`
-          : 'Port tambahan berhasil ditambahkan dan disinkronkan ke Wings.',
-      );
+          : 'Port tambahan berhasil ditambahkan dan disinkronkan ke Wings.';
+      setAllocationMessage(text);
+      notifyOutcome(text, json.wings_synced === false);
       await loadAllocations();
     } catch (err) {
-      setAllocationError(err instanceof Error ? err.message : 'Gagal menambahkan port');
+      const message = err instanceof Error ? err.message : 'Gagal menambahkan port';
+      setAllocationError(message);
+      toast.error(message);
     } finally {
       setAllocationBusy(false);
     }
@@ -322,11 +343,12 @@ export function ServerSettings({
       });
       const json = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(json.error || 'Gagal menghapus port tambahan');
-      setAllocationMessage(
+      const text =
         json.wings_synced === false
           ? `Port dilepas, tetapi sinkronisasi Wings gagal: ${json.wings_sync_error ?? 'node tidak merespons'}`
-          : 'Port tambahan dilepas dari server.',
-      );
+          : 'Port tambahan dilepas dari server.';
+      setAllocationMessage(text);
+      notifyOutcome(text, json.wings_synced === false);
       await loadAllocations();
     } catch (err) {
       setAllocationError(err instanceof Error ? err.message : 'Gagal menghapus port tambahan');

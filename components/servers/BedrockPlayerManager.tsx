@@ -7,6 +7,7 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Input, Select } from '@/components/ui/Input';
 import { PageLoader, Spinner } from '@/components/ui/Spinner';
+import { SkeletonTableRows } from '@/components/ui/Skeleton';
 // `import type` saja — lib/minecraft/bedrock.ts adalah modul server (menulis file
 // lewat Wings) sehingga tidak boleh ikut ke bundle browser.
 import type { BedrockPermission, BedrockPlayer } from '@/lib/minecraft/bedrock';
@@ -376,7 +377,18 @@ export function BedrockPlayerManager({
           )}
 
           {loading ? (
-            <PageLoader label="Membaca allowlist.json & permissions.json…" />
+            <div
+              className="overflow-x-auto rounded-lg border border-line-soft"
+              role="status"
+              aria-busy="true"
+              aria-label="Membaca allowlist.json & permissions.json"
+            >
+              <table className="w-full min-w-[720px] text-sm">
+                <tbody>
+                  <SkeletonTableRows rows={4} cols={5} />
+                </tbody>
+              </table>
+            </div>
           ) : error ? null : players.length === 0 ? (
             <div className="rounded-lg border border-line-soft bg-base-900/40 px-4 py-8 text-center">
               <p className="text-sm text-ink-muted">Belum ada player di allowlist.json.</p>

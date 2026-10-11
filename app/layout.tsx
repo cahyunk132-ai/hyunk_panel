@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { ThemeProvider } from '@/components/theme/ThemeProvider';
 import { Toaster } from '@/components/ui/Toaster';
+import { NavigationProgress } from '@/components/layout/NavigationProgress';
 import { buildAppearanceInitScript } from '@/lib/appearance/init-script';
 import './globals.css';
 
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-screen font-sans text-ink">
+        <NavigationProgress />
         <ThemeProvider>{children}</ThemeProvider>
         <Toaster />
         <SpeedInsights />

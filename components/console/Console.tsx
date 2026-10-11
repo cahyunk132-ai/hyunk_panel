@@ -3,6 +3,12 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useWingsConsole } from '@/hooks/useWingsConsole';
 import { StatusDot } from '@/components/servers/StatusBadge';
+import { Spinner } from '@/components/ui/Spinner';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { toast, updateToast } from '@/lib/utils/toast';
+
+/** Lebar baris placeholder saat console belum terhubung (kelas statis agar terdeteksi Tailwind). */
+const PLACEHOLDER_WIDTHS = ['w-[72%]', 'w-[46%]', 'w-[84%]', 'w-[58%]', 'w-[34%]'];
 
 // ─── Renderer ANSI sederhana (cukup untuk log Minecraft/daemon) ─────────────
 
@@ -101,16 +107,21 @@ export function Console({ serverId }: { serverId: string }) {
   async function acceptEula() {
     setEulaLoading(true);
     setEulaError(null);
+    const toastId = toast.loading('Menerima EULA dan menjalankan server…');
     try {
       const res = await fetch(`/api/servers/${serverId}/eula`, { method: 'POST' });
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: string };
-        setEulaError(`Gagal menerima EULA: ${j.error ?? res.status}`);
+        const message = `Gagal menerima EULA: ${j.error ?? res.status}`;
+        setEulaError(message);
+        updateToast(toastId, message, 'error');
+      } else {
+        updateToast(toastId, 'EULA diterima — server sedang dijalankan', 'success');
       }
     } catch (err) {
-      setEulaError(
-        `Gagal menerima EULA: ${err instanceof Error ? err.message : 'Kesalahan jaringan'}`,
-      );
+      const message = `Gagal menerima EULA: ${err instanceof Error ? err.message : 'Kesalahan jaringan'}`;
+      setEulaError(message);
+      updateToast(toastId, message, 'error');
     } finally {
       setEulaLoading(false);
     }
@@ -153,6 +164,21 @@ export function Console({ serverId }: { serverId: string }) {
         ? 'Menghubungkan…'
         : 'Terputus';
 
+  // Dot status koneksi: hijau = terhubung, amber berdenyut = sedang menyambung, merah = terputus.
+  const connDotClass =
+    connectionState === 'connected'
+      ? 'bg-emerald-400'
+      : connectionState === 'connecting'
+        ? 'bg-amber-400 animate-pulse motion-reduce:animate-none'
+        : 'bg-red-400';
+  const connTextClass =
+    connectionState === 'connected'
+      ? 'text-emerald-400'
+      : connectionState === 'connecting'
+        ? 'text-amber-400'
+        : 'text-red-400';
+  const isConnecting = connectionState !== 'connected' && lines.length === 0;
+
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-xl border border-line bg-base-950">
       {/* Bar status */}
@@ -161,16 +187,8 @@ export function Console({ serverId }: { serverId: string }) {
           <StatusDot status={status} />
           <span className="font-medium text-ink">{status}</span>
           <span className="text-ink-faint">·</span>
-          <span
-            className={`flex items-center gap-1.5 ${
-              connectionState === 'connected' ? 'text-emerald-400' : 'text-amber-400'
-            }`}
-          >
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                connectionState === 'connected' ? 'bg-emerald-400' : 'bg-amber-400 dot-pulse'
-              }`}
-            />
+          <span className={`flex items-center gap-1.5 ${connTextClass}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${connDotClass}`} />
             {connLabel}
           </span>
           {connectionError && <span className="text-red-400">{connectionError}</span>}
@@ -179,7 +197,8 @@ export function Console({ serverId }: { serverId: string }) {
           {/* Stat resource pindah ke ConsoleResourceBar di atas terminal. */}
           <button
             onClick={clearLines}
-            className="rounded border border-line px-2 py-0.5 text-ink-faint transition-colors hover:text-ink"
+            disabled={lines.length === 0}
+            className="rounded border border-line px-2 py-0.5 text-ink-faint transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
           >
             Bersihkan
           </button>
@@ -216,8 +235,10 @@ export function Console({ serverId }: { serverId: string }) {
             type="button"
             onClick={() => void acceptEula()}
             disabled={eulaLoading}
-            className="shrink-0 rounded-lg bg-yellow-500 px-4 py-1.5 text-xs font-medium text-black transition-colors hover:bg-yellow-400 disabled:cursor-not-allowed disabled:opacity-60"
+            aria-busy={eulaLoading || undefined}
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-yellow-500 px-4 py-1.5 text-xs font-medium text-black transition-colors hover:bg-yellow-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
+            {eulaLoading && <Spinner size="sm" tone="inherit" className="h-3.5 w-3.5" />}
             {eulaLoading ? 'Mengirim…' : 'Terima EULA & Restart'}
           </button>
         </div>
@@ -230,12 +251,16 @@ export function Console({ serverId }: { serverId: string }) {
         onClick={() => inputRef.current?.focus()}
         className="hyunk-console console-scroll min-h-0 flex-1 overflow-y-auto bg-base-950 px-3 py-2"
       >
-        {lines.length === 0 && (
-          <p className="text-ink-faint">
-            {connectionState === 'connected'
-              ? 'Menunggu output…'
-              : 'Menghubungkan ke node…'}
-          </p>
+        {isConnecting && (
+          <div role="status" aria-label="Menghubungkan ke node" className="space-y-2.5 py-1">
+            <p className="text-ink-faint">Menghubungkan ke node…</p>
+            {PLACEHOLDER_WIDTHS.map((width) => (
+              <Skeleton key={width} className={`h-3 ${width}`} />
+            ))}
+          </div>
+        )}
+        {lines.length === 0 && connectionState === 'connected' && (
+          <p className="text-ink-faint">Menunggu output…</p>
         )}
         {lines.map((line, i) => (
           <div key={i} className="whitespace-pre-wrap break-all text-ink/90">
