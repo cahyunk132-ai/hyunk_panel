@@ -41,10 +41,11 @@ Browser ──► /api/... (Next.js API route, serverless) ──► Wings API (
 ### 1. Supabase
 
 1. Buat project baru di [supabase.com](https://supabase.com).
-2. Buka **SQL Editor**, jalankan [`001_initial.sql`](supabase/migrations/001_initial.sql), [`002_role_management.sql`](supabase/migrations/002_role_management.sql), [`003_egg_system.sql`](supabase/migrations/003_egg_system.sql), [`004_auto_download.sql`](supabase/migrations/004_auto_download.sql), [`005_auto_backup.sql`](supabase/migrations/005_auto_backup.sql), [`006_server_subdomains.sql`](supabase/migrations/006_server_subdomains.sql), [`007_auto_server_users.sql`](supabase/migrations/007_auto_server_users.sql), dan [`008_count_user_subdomains.sql`](supabase/migrations/008_count_user_subdomains.sql), lalu [`009_drop_subdomain_quota.sql`](supabase/migrations/009_drop_subdomain_quota.sql).
-   Migration kedua menambahkan role hierarchy, subuser assignment, batas lima Owner Panel, dan policy RLS berbasis role. Migration ketiga menambahkan Egg, versi, assignment Egg ke node, serta referensi Egg/versi aktif pada server. Migration keempat menambahkan kolom auto-download pada versi Egg (provider, URL template custom, variabel, filename, flag executable). Migration kelima menambahkan **Auto Backup System**: tabel `storage_providers`, `backup_schedules`, dan `backup_logs` beserta RLS-nya. Migration keenam menambahkan **Subdomain Manager**: tabel `server_subdomains` (subdomain per server → IP:port via reverse proxy Wings) beserta RLS-nya. Migration ketujuh mengisi baris `server_users` yang hilang untuk server yang sudah ada plus trigger auto-assign owner. Migration kedelapan sempat menambahkan function `count_user_subdomains(uuid)` untuk kuota subdomain per user, dan migration kesembilan **menghapusnya** — sistem subdomain sekarang **satu subdomain aktif per server tanpa kuota per user**, jadi function kuota itu tidak dipakai lagi.
-3. Buat user pertama: **Authentication → Users → Add user** (email + password).
-4. Jadikan Owner Panel pertama — di SQL Editor:
+2. Buka **SQL Editor**, jalankan [`001_initial.sql`](supabase/migrations/001_initial.sql), [`002_role_management.sql`](supabase/migrations/002_role_management.sql), [`003_egg_system.sql`](supabase/migrations/003_egg_system.sql), [`004_auto_download.sql`](supabase/migrations/004_auto_download.sql), [`005_auto_backup.sql`](supabase/migrations/005_auto_backup.sql), [`006_server_subdomains.sql`](supabase/migrations/006_server_subdomains.sql), [`007_auto_server_users.sql`](supabase/migrations/007_auto_server_users.sql), dan [`008_count_user_subdomains.sql`](supabase/migrations/008_count_user_subdomains.sql), lalu [`009_drop_subdomain_quota.sql`](supabase/migrations/009_drop_subdomain_quota.sql), [`010_add_backup_schedule_permission.sql`](supabase/migrations/010_add_backup_schedule_permission.sql), dan [`011_announcements.sql`](supabase/migrations/011_announcements.sql).
+   Migration kedua menambahkan role hierarchy, subuser assignment, batas lima Owner Panel, dan policy RLS berbasis role. Migration ketiga menambahkan Egg, versi, assignment Egg ke node, serta referensi Egg/versi aktif pada server. Migration keempat menambahkan kolom auto-download pada versi Egg (provider, URL template custom, variabel, filename, flag executable). Migration kelima menambahkan **Auto Backup System**: tabel `storage_providers`, `backup_schedules`, dan `backup_logs` beserta RLS-nya. Migration keenam menambahkan **Subdomain Manager**: tabel `server_subdomains` (subdomain per server → IP:port via reverse proxy Wings) beserta RLS-nya. Migration ketujuh mengisi baris `server_users` yang hilang untuk server yang sudah ada plus trigger auto-assign owner. Migration kedelapan sempat menambahkan function `count_user_subdomains(uuid)` untuk kuota subdomain per user, dan migration kesembilan **menghapusnya** — sistem subdomain sekarang **satu subdomain aktif per server tanpa kuota per user**, jadi function kuota itu tidak dipakai lagi. Migration kesepuluh menambahkan permission `backup.schedule` pada assignment yang sudah ada. Migration kesebelas menambahkan **Announcement System**: tabel `announcements` (broadcast pengumuman admin → banner di panel user) beserta RLS-nya.
+3. Buat user pertama: **Authentication → Users → Add user** (email + password). Centang **Auto Confirm User** — sejak fitur [Email Verification](#email-verification--reset-password) aktif, akun dengan email belum terverifikasi hanya bisa membuka `/verify-email` dan tidak bisa memakai panel.
+4. Atur **Authentication → URL Configuration**: isi **Site URL** dengan `NEXT_PUBLIC_APP_URL` (mis. `https://panel.wangstore.web.id`) dan tambahkan `https://panel.wangstore.web.id/auth/callback` ke **Redirect URLs** supaya link verifikasi email & reset password kembali ke panel. Pastikan **Authentication → Providers → Email → Confirm email** aktif bila ingin pendaftaran baru wajib verifikasi, dan isi **SMTP** (Auth → SMTP) agar email benar-benar terkirim.
+5. Jadikan Owner Panel pertama — di SQL Editor:
    ```sql
    update public.users set role = 'owner_panel' where email = 'email-anda@contoh.com';
    ```
@@ -189,9 +190,15 @@ Dropdown permission & checkbox Ignore Player Limit di tabel auto-save (PUT) seti
 
 ## Fitur
 
-- **Auth & RBAC** — login Supabase Auth (email+password), role `admin`/`user`,
+- **Auth & RBAC** — login Supabase Auth (email+password), register mandiri (`/register`) dengan
+  **verifikasi email wajib**, **lupa/reset password** lewat link email, role `admin`/`user`,
   permission granular per server (`server_users.permissions`: `console`, `console.send`,
   `start/stop/restart/kill`, `files.read/edit`, `backups`, `settings`).
+  Lihat [Email Verification & Reset Password](#email-verification--reset-password).
+- **Announcement System** — admin broadcast pengumuman ke semua user panel; tampil sebagai banner
+  berwarna (info/warning/danger/success) di Dashboard & Servers, bisa di-dismiss per pengumuman,
+  punya tanggal kedaluwarsa, dan dikelola di `/admin/announcements`.
+  Lihat [Announcement System](#announcement-system).
 - **Resource monitoring** — grafik realtime (SVG, tanpa dependency) untuk CPU, RAM,
   network RX/TX per detik, plus disk & uptime, di-tab Overview server. Sumber: stream
   event `stats` lewat WebSocket Wings (window ±2 menit); koneksi diputus saat tab tidak aktif.
@@ -388,6 +395,96 @@ Retention: backup cloud terlama dihapus otomatis bila melebihi limit
 > `POST /api/remote/backups/{uuid}` (sudah ada). Tanpa itu, job menunggu sampai timeout
 > (240 d) lalu tercatat `failed` di backup_logs.
 
+## Email Verification & Reset Password
+
+Semua aliran email auth memakai Supabase Auth (panel tidak mengirim email sendiri).
+
+### Alur
+
+| Alur | Langkah |
+|---|---|
+| Register | `/register` → `supabase.auth.signUp()` (username dikirim lewat `options.data`, dipakai trigger `handle_new_user`) → Supabase mengirim email verifikasi → user diarahkan ke `/verify-email` |
+| Verifikasi | user klik link di email → `/auth/callback?type=signup&code=…` → `exchangeCodeForSession` → redirect `/dashboard?verified=1` (toast "Email terverifikasi") |
+| Belum verifikasi | `middleware.ts` memblokir semua halaman & `/api/*` (403 JSON) kecuali `/verify-email`; halaman itu menawarkan tombol **Kirim ulang email verifikasi** (`supabase.auth.resend`, cooldown 30 detik) |
+| Lupa password | `/login` → **Lupa password?** → `/forgot-password` → `supabase.auth.resetPasswordForEmail()` dengan `redirectTo` = `{NEXT_PUBLIC_APP_URL}/auth/callback?type=recovery` |
+| Reset password | link email → `/auth/callback?type=recovery` → sesi recovery → `/reset-password` (password baru + konfirmasi) → `updateUser({ password })` → sign out → `/login?reset=success` → toast **"Password berhasil diubah"** |
+
+`/reset-password` juga menerima token langsung dari Supabase (`?code=…` atau
+`?token_hash=…&type=recovery`) bila Site URL diarahkan ke sana — jadi alurnya tetap jalan walau
+`/auth/callback` tidak dipakai.
+
+### Route publik
+
+`middleware.ts` memperlakukan path berikut sebagai publik: `/login`, `/register`, `/verify-email`,
+`/forgot-password`, `/reset-password`, `/auth/callback`, dan `GET /api/announcements`. User yang
+sudah login **dan** terverifikasi di-redirect dari halaman auth itu ke `/dashboard` (pengecualian:
+`/reset-password`, karena sesi recovery memang dipakai di sana).
+
+### Konfigurasi Supabase (wajib)
+
+1. **Authentication → Providers → Email** — aktifkan **Confirm email**. Bila dimatikan, `signUp`
+   langsung membuat sesi dan `/verify-email` otomatis dilewati.
+2. **Authentication → URL Configuration** — **Site URL** = `NEXT_PUBLIC_APP_URL`, dan tambahkan
+   `{NEXT_PUBLIC_APP_URL}/auth/callback` ke **Redirect URLs**. Tanpa ini Supabase menolak
+   `emailRedirectTo` dan link di email tidak kembali ke panel.
+3. **Authentication → SMTP** — isi SMTP sendiri (email bawaan Supabase dibatasi ±2/jam) supaya
+   email verifikasi & reset benar-benar terkirim.
+4. **Authentication → Rate Limits** — batas resend dikontrol Supabase; UI menahan tombol 30 detik
+   dan menampilkan pesan bila limit tercapai.
+
+> Akun yang dibuat admin lewat `POST /api/admin/users` tetap dibuat dengan `email_confirm: true`
+> (langsung terverifikasi), jadi user hasil invite admin tidak terblokir guard `/verify-email`.
+> Notifikasi kecil (toast) memakai `lib/utils/toast.ts` + `<Toaster />` di `app/layout.tsx`.
+
+## Announcement System
+
+Admin (Owner Panel & Admin) broadcast pengumuman ke semua user panel.
+Migration: [`011_announcements.sql`](supabase/migrations/011_announcements.sql).
+
+### Skema
+
+Tabel `announcements`: `id`, `title`, `content`, `type` (`info` \| `warning` \| `danger` \|
+`success`), `is_active`, `created_by` (→ `users.id`, `ON DELETE SET NULL`), `created_at`,
+`expires_at` (`null` = permanen sampai dinonaktifkan).
+
+"Sedang tayang" = `is_active = true` **dan** (`expires_at IS NULL` **atau** `expires_at > now()`).
+Aturan itu satu tempat di `lib/announcements.ts` (`isAnnouncementExpired`,
+`filterLiveAnnouncements`) dan dipakai bersama oleh API route serta banner, jadi UI dan API tidak
+pernah beda.
+
+### Admin — `/admin/announcements`
+
+Tabel semua pengumuman (judul + preview konten, tipe, status **Tayang/Nonaktif/Kedaluwarsa**,
+tanggal dibuat + pembuat, tanggal kedaluwarsa) dengan pencarian dan filter status, plus tombol
+**+ Buat pengumuman**, **Edit**, **Aktifkan/Nonaktifkan**, dan **Hapus**. Form buat/edit berisi
+judul, konten (textarea), tipe, dan tanggal kedaluwarsa opsional (`datetime-local`), dilengkapi
+preview banner sesuai warna tipenya.
+
+### Banner di panel user
+
+`components/announcements/AnnouncementBanners.tsx` dipasang di `DashboardShell` dan hanya aktif di
+path yang terdaftar pada `ANNOUNCEMENT_BANNER_PATHS` (default: `/dashboard`, `/servers`).
+
+- Warna mengikuti tipe: **info** biru, **warning** kuning, **danger** merah, **success** hijau.
+- Beberapa pengumuman aktif → ditumpuk vertikal di bawah navbar.
+- Tombol ✕ menutup banner dan menyimpan ID-nya di `localStorage`
+  (kunci `hyunk.announcements.dismissed`), jadi tidak muncul lagi untuk user itu.
+- Disegarkan tiap 60 detik; pengumuman yang sudah lewat `expires_at` hilang sendiri.
+- Gagal memuat pengumuman tidak pernah mengganggu halaman (fail-safe: banner tidak tampil).
+
+### API routes
+
+| Endpoint | Auth | Fungsi |
+|---|---|---|
+| `GET /api/announcements` | publik | semua pengumuman yang sedang tayang (maks 20, hanya kolom aman) |
+| `GET /api/admin/announcements` | Owner Panel & Admin | semua pengumuman + username pembuat + jumlah yang tayang |
+| `POST /api/admin/announcements` | Owner Panel & Admin | buat pengumuman `{ title, content, type?, expires_at? }` |
+| `PATCH /api/admin/announcements/[id]` | Owner Panel & Admin | edit sebagian field, toggle `is_active`, `expires_at: null` = permanen |
+| `DELETE /api/admin/announcements/[id]` | Owner Panel & Admin | hapus pengumuman |
+
+Semua aksi admin dicatat di audit log (`/activity`) sebagai `admin:announcement-create`,
+`admin:announcement-update`, dan `admin:announcement-delete`.
+
 ## Batasan yang disengaja (mengikuti brief)
 
 - ❌ Tidak ada billing/payment. ❌ Tidak ada auto-provisioning massal.
@@ -420,8 +517,11 @@ Kustomisasi tampilan ada di **Appearance** (sidebar) atau lewat tombol 🎨 di t
 
 ```
 app/            → halaman (App Router) + API routes (panel + remote)
+  (auth)/       → login, register, verify-email, forgot-password, reset-password
+  auth/callback → landing link email Supabase (verifikasi signup & reset password)
 components/     → UI, layout, console (websocket), file manager, power, backup, users,
-                  theme/ (ThemeProvider, AppearanceControls, drawer appearance)
+                  announcements/ (banner pengumuman), admin/ (AnnouncementsAdmin, SubdomainsAdmin),
+                  theme/ (ThemeProvider, AppearanceControls, drawer appearance), ui/Toaster (toast global)
 hooks/          → useWingsConsole (websocket), useServerStatus (polling)
 lib/
   wings/        → client.ts (SATU-SATUNYA pintu ke Wings), crypto.ts (AES-256-GCM),
@@ -429,11 +529,13 @@ lib/
   remote/       → auth.ts (validasi wings→panel), config.ts (settings/process builder)
   supabase/     → client browser/server/service
   auth/         → session.ts, rbac.ts (checkPermission)
+  announcements.ts → aturan pengumuman (tipe, validasi, kedaluwarsa) — dipakai API & banner
   appearance/   → config.ts (palet & default), apply.ts (CSS variables), init-script.ts (anti-flash),
                   storage.ts, image.ts (kompres foto custom)
   storage/      → auto backup: crypto.ts (enkripsi kredensial), schedule.ts (next_run_at),
                   tokens.ts (refresh OAuth), gdrive/dropbox/s3/sftp/webdav.ts (upload
                   streaming), backupJob.ts (pipeline cron/manual/admin)
+  utils/        → format.ts, constants.ts, toast.ts (toast store), app-url.ts (emailRedirectTo auth)
 supabase/migrations/001_initial.sql
 supabase/migrations/002_role_management.sql
 supabase/migrations/003_egg_system.sql
@@ -443,6 +545,8 @@ supabase/migrations/006_server_subdomains.sql
 supabase/migrations/007_auto_server_users.sql
 supabase/migrations/008_count_user_subdomains.sql
 supabase/migrations/009_drop_subdomain_quota.sql
+supabase/migrations/010_add_backup_schedule_permission.sql
+supabase/migrations/011_announcements.sql
 ```
 
 ## Catatan operasional

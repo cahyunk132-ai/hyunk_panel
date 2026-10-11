@@ -104,6 +104,17 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    href: '/admin/announcements',
+    label: 'Announcements',
+    adminOnly: true,
+    icon: (
+      <svg {...iconProps}>
+        <path d="M3 10v4a1 1 0 0 0 1 1h3l5 4V5L7 9H4a1 1 0 0 0-1 1Z" />
+        <path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" />
+      </svg>
+    ),
+  },
+  {
     href: '/nodes',
     label: 'Nodes',
     icon: (

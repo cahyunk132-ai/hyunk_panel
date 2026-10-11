@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
+import { AnnouncementBanners } from '@/components/announcements/AnnouncementBanners';
+import { toast } from '@/lib/utils/toast';
 import type { UserRole } from '@/types';
 
 export function DashboardShell({
@@ -23,6 +25,18 @@ export function DashboardShell({
   useEffect(() => {
     setSidebarOpen(false);
   }, [pathname]);
+
+  // Selesai verifikasi email (/auth/callback → /dashboard?verified=1).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('verified') !== '1') return;
+    toast.success('Email terverifikasi. Selamat datang di Hyunk Panel!');
+    try {
+      window.history.replaceState(null, '', window.location.pathname);
+    } catch {
+      // diabaikan — sekadar membersihkan query string
+    }
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -47,7 +61,11 @@ export function DashboardShell({
           role={role}
           onMenuClick={() => setSidebarOpen((open) => !open)}
         />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">
+          {/* Banner pengumuman admin — hanya di path ANNOUNCEMENT_BANNER_PATHS. */}
+          <AnnouncementBanners />
+          {children}
+        </main>
       </div>
     </div>
   );

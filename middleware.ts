@@ -3,16 +3,26 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 
 /**
  * Auth guard untuk seluruh dashboard + API panel.
- * - /login             → publik (redirect ke /dashboard bila sudah login)
+ * - /login, /register, /forgot-password, /reset-password → publik
+ *   (yang sudah login & terverifikasi di-redirect ke /dashboard, kecuali
+ *   /reset-password karena sesi recovery memang dipakai di halaman itu)
+ * - /verify-email      → publik (halaman tunggu verifikasi + kirim ulang email)
+ * - /auth/callback     → publik (landing link email Supabase: verifikasi & reset)
  * - /, /privacy, /tos  → publik (homepage dan legal pages, boleh diakses tanpa login)
+ * - /api/announcements → publik (GET pengumuman aktif untuk banner; read-only)
  * - /api/remote/*      → publik (Wings; auth pakai Bearer token node di handler)
  * - /api/auth/*        → publik (termasuk OAuth callback cloud storage)
  * - /api/cron/*        → publik (Vercel Cron; divalidasi via CRON_SECRET di handler)
- * - /api/* lainnya     → butuh session, 401 JSON bila tidak ada
- * - halaman lain       → butuh session, redirect ke /login
+ * - /api/* lainnya     → butuh session + email terverifikasi (401/403 JSON bila tidak)
+ * - halaman lain       → butuh session + email terverifikasi (redirect /login atau /verify-email)
  *
  * Middleware juga me-refresh cookie session Supabase.
  */
+
+/** Halaman auth yang boleh dibuka tanpa session. */
+const PUBLIC_AUTH_PAGES = ['/login', '/register', '/forgot-password', '/reset-password'];
+const VERIFY_EMAIL_PAGE = '/verify-email';
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -20,6 +30,8 @@ export async function middleware(request: NextRequest) {
     pathname === '/' ||
     pathname === '/privacy' ||
     pathname === '/tos' ||
+    pathname === '/auth/callback' ||
+    pathname === '/api/announcements' ||
     pathname.startsWith('/api/remote') ||
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/api/cron')
@@ -57,13 +69,23 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const isApi = pathname.startsWith('/api/');
-  const isLoginPage = pathname === '/login';
+  const isPublicAuthPage = PUBLIC_AUTH_PAGES.includes(pathname);
+  const isVerifyEmailPage = pathname === VERIFY_EMAIL_PAGE;
+  const isResetPasswordPage = pathname === '/reset-password';
+  const emailConfirmed = Boolean(user?.email_confirmed_at);
+
+  function redirectTo(path: string) {
+    const url = request.nextUrl.clone();
+    url.pathname = path;
+    url.search = '';
+    return NextResponse.redirect(url);
+  }
 
   if (!user) {
     if (isApi) {
       return NextResponse.json({ error: 'Tidak terautentikasi' }, { status: 401 });
     }
-    if (!isLoginPage) {
+    if (!isPublicAuthPage && !isVerifyEmailPage) {
       const url = request.nextUrl.clone();
       url.pathname = '/login';
       url.searchParams.set('next', pathname);
@@ -72,11 +94,23 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  if (isLoginPage) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/dashboard';
-    url.search = '';
-    return NextResponse.redirect(url);
+  // Email belum diverifikasi → hanya /verify-email yang boleh dibuka.
+  // /reset-password dikecualikan: sesi recovery harus bisa dipakai untuk
+  // menyetel password baru (link reset bisa dibuka sebelum verifikasi tuntas).
+  if (!emailConfirmed && !isVerifyEmailPage && !isResetPasswordPage) {
+    if (isApi) {
+      return NextResponse.json(
+        { error: 'Email belum diverifikasi. Cek inbox kamu untuk link verifikasi.' },
+        { status: 403 },
+      );
+    }
+    return redirectTo(VERIFY_EMAIL_PAGE);
+  }
+
+  // Sudah login & terverifikasi → halaman auth tidak relevan lagi.
+  if (isPublicAuthPage || isVerifyEmailPage) {
+    if (isResetPasswordPage) return response;
+    return redirectTo('/dashboard');
   }
 
   return response;

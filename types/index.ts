@@ -363,6 +363,48 @@ export interface AdminBackupLogsResponse {
   stats: AdminBackupStats;
 }
 
+// ─── Announcements (broadcast pengumuman admin) ─────────────────────────────
+
+/** Warna/kategori banner pengumuman. */
+export type AnnouncementType = 'info' | 'warning' | 'danger' | 'success';
+
+export interface AnnouncementRow {
+  id: string;
+  title: string;
+  content: string;
+  type: AnnouncementType;
+  is_active: boolean;
+  /** Admin yang membuat (null bila akunnya sudah dihapus). */
+  created_by: string | null;
+  created_at: string;
+  /** null = permanen sampai dinonaktifkan. */
+  expires_at: string | null;
+}
+
+/** Baris untuk tabel admin — lengkap dengan nama pembuatnya. */
+export interface AdminAnnouncementRow extends AnnouncementRow {
+  created_by_username: string | null;
+}
+
+/** Bentuk yang dikirim ke browser untuk banner (tanpa kolom internal). */
+export type PublicAnnouncement = Pick<
+  AnnouncementRow,
+  'id' | 'title' | 'content' | 'type' | 'created_at' | 'expires_at'
+>;
+
+/** Response GET /api/announcements (publik). */
+export interface PublicAnnouncementsResponse {
+  announcements: PublicAnnouncement[];
+  total: number;
+}
+
+/** Response GET /api/admin/announcements. */
+export interface AdminAnnouncementsResponse {
+  announcements: AdminAnnouncementRow[];
+  total: number;
+  active: number;
+}
+
 // ─── API payloads ────────────────────────────────────────────────────────────
 
 export interface ApiErrorShape {
