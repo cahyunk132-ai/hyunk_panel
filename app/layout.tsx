@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
+import { ThemeProvider } from '@/components/theme/ThemeProvider';
+import { buildAppearanceInitScript } from '@/lib/appearance/init-script';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -17,10 +19,14 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+// Inline script anti-flash: menerapkan tema & appearance sebelum halaman tergambar.
+const APPEARANCE_INIT_SCRIPT = buildAppearanceInitScript();
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="id" className="dark">
+    <html lang="id" suppressHydrationWarning>
       <head>
+        <script id="hyunk-appearance-init" dangerouslySetInnerHTML={{ __html: APPEARANCE_INIT_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
@@ -29,7 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-screen bg-base font-sans text-ink">
-        {children}
+        <ThemeProvider>{children}</ThemeProvider>
         <SpeedInsights />
       </body>
     </html>

@@ -1,5 +1,11 @@
 import type { Config } from 'tailwindcss';
 
+/**
+ * Warna diambil dari CSS variables (lihat lib/appearance/apply.ts) sehingga seluruh
+ * panel mengikuti tema aktif. Format variable: "r g b" → rgb(var(--x) / <alpha-value>).
+ */
+const c = (name: string) => `rgb(var(--${name}) / <alpha-value>)`;
+
 const config: Config = {
   content: [
     './app/**/*.{ts,tsx}',
@@ -12,28 +18,30 @@ const config: Config = {
     extend: {
       colors: {
         base: {
-          DEFAULT: '#0f1117',
-          950: '#0c0e13',
-          900: '#0f1117',
-          850: '#13161f',
-          800: '#171b26',
-          700: '#1e2431',
-          600: '#262e3f',
+          DEFAULT: c('bg-primary'),
+          950: c('bg-sidebar'),
+          900: c('bg-primary'),
+          850: c('card'),
+          800: c('bg-secondary'),
+          700: c('bg-tertiary'),
+          600: c('bg-quaternary'),
         },
         line: {
-          DEFAULT: '#232a3a',
-          soft: '#1b2130',
+          DEFAULT: c('border'),
+          soft: c('border-soft'),
         },
         accent: {
-          DEFAULT: '#3ecfcf',
-          dim: '#2ea8a8',
-          soft: 'rgba(62, 207, 207, 0.12)',
+          DEFAULT: c('accent'),
+          dim: c('accent-dim'),
+          soft: 'rgb(var(--accent) / 0.12)',
         },
+        // Teks di atas latar aksen (tombol primary, badge aksen).
+        'on-accent': c('on-accent'),
         ink: {
-          DEFAULT: '#e6eaf2',
-          muted: '#9aa4b8',
-          faint: '#5d6679',
-          soft: '#7d8795',
+          DEFAULT: c('text-primary'),
+          muted: c('text-secondary'),
+          faint: c('text-faint'),
+          soft: c('text-soft'),
         },
       },
       fontFamily: {
@@ -42,7 +50,7 @@ const config: Config = {
       },
       boxShadow: {
         card: '0 1px 2px rgba(0,0,0,0.35)',
-        glow: '0 0 0 1px rgba(62,207,207,0.25), 0 4px 24px rgba(62,207,207,0.08)',
+        glow: '0 0 0 1px rgb(var(--accent) / 0.25), 0 4px 24px rgb(var(--accent) / 0.08)',
       },
     },
   },

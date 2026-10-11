@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { RoleBadge } from '@/components/users/RoleBadge';
+import { AppearanceButton } from '@/components/theme/AppearanceDrawer';
 import type { UserRole } from '@/types';
 
 export function Topbar({
@@ -63,6 +64,7 @@ export function Topbar({
       </div>
 
       <div className="flex shrink-0 items-center gap-3">
+        <AppearanceButton />
         <div className="hidden text-right leading-tight md:block">
           <p className="text-sm font-medium text-ink">{username}</p>
           <p className="text-[11px] text-ink-faint">{email}</p>

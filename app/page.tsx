@@ -99,7 +99,7 @@ export default function HomePage() {
           <div className="mt-9 flex w-full flex-col items-stretch justify-center gap-3 sm:w-auto sm:flex-row sm:items-center">
             <Link
               href="/login"
-              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-accent px-6 py-3 text-sm font-bold text-base-950 shadow-[0_8px_28px_rgba(62,207,207,0.18)] transition-all hover:-translate-y-0.5 hover:bg-[#58dddd] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-accent px-6 py-3 text-sm font-bold text-on-accent shadow-[0_8px_28px_rgba(62,207,207,0.18)] transition-all hover:-translate-y-0.5 hover:bg-accent-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               Get Started
               <svg aria-hidden viewBox="0 0 20 20" fill="none" className="h-4 w-4">
