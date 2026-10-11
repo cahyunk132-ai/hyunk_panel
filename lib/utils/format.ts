@@ -42,6 +42,23 @@ export function formatRelativeTime(iso: string): string {
   return `${d} hari lalu`;
 }
 
+/** Tanggal + jam lokal untuk label UI (mis. "berlaku hingga" pengumuman). */
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+/** Nilai untuk input `<input type="datetime-local">` (waktu lokal browser). */
+export function toDateTimeLocalValue(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export function shortUuid(uuid: string): string {
   return uuid.split('-')[0] ?? uuid;
 }

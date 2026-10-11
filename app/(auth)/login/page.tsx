@@ -1,11 +1,13 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useState, type FormEvent } from 'react';
+import { Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { SetupScreen } from '@/components/SetupScreen';
 import { Button } from '@/components/ui/Button';
 import { Input, Field } from '@/components/ui/Input';
+import { toast } from '@/lib/utils/toast';
 
 function LoginForm() {
   const router = useRouter();
@@ -14,6 +16,39 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const noticeShown = useRef(false);
+
+  // Notifikasi hasil alur auth lain (reset password, verifikasi email, link rusak).
+  useEffect(() => {
+    if (noticeShown.current) return;
+    const reset = searchParams.get('reset');
+    const verified = searchParams.get('verified');
+    const registered = searchParams.get('registered');
+    const authFailed = searchParams.get('auth') === 'failed';
+    const reason = searchParams.get('reason');
+
+    if (reset === 'success') {
+      noticeShown.current = true;
+      toast.success('Password berhasil diubah');
+    } else if (verified === '1') {
+      noticeShown.current = true;
+      toast.success('Email terverifikasi. Silakan masuk.');
+    } else if (registered === '1') {
+      noticeShown.current = true;
+      toast.info('Akun terdaftar. Cek email kamu untuk verifikasi.');
+    } else if (authFailed) {
+      noticeShown.current = true;
+      toast.error(reason ?? 'Link tidak valid atau sudah kedaluwarsa');
+    }
+    if (!noticeShown.current) return;
+
+    // Bersihkan query string supaya toast tidak muncul lagi saat refresh.
+    try {
+      window.history.replaceState(null, '', '/login');
+    } catch {
+      // diabaikan — sekadar kosmetik
+    }
+  }, [searchParams]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -30,13 +65,14 @@ function LoginForm() {
       router.replace(next);
       router.refresh();
     } catch (err) {
-      setError(
-        err instanceof Error && err.message.toLowerCase().includes('invalid')
-          ? 'Email atau password salah'
-          : err instanceof Error
-            ? err.message
-            : 'Login gagal',
-      );
+      const message = err instanceof Error ? err.message : 'Login gagal';
+      // Akun belum verifikasi email → arahkan ke halaman verifikasi (bawa email
+      // supaya tombol "kirim ulang" langsung terisi).
+      if (message.toLowerCase().includes('email not confirmed')) {
+        router.replace(`/verify-email?email=${encodeURIComponent(email.trim())}`);
+        return;
+      }
+      setError(message.toLowerCase().includes('invalid') ? 'Email atau password salah' : message);
     } finally {
       setLoading(false);
     }
@@ -66,14 +102,24 @@ function LoginForm() {
             />
           </Field>
           <Field label="Password" required>
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="current-password"
-              required
-            />
+            <div className="space-y-1.5">
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="current-password"
+                required
+              />
+              <div className="text-right">
+                <Link
+                  href="/forgot-password"
+                  className="text-[11px] text-accent hover:underline"
+                >
+                  Lupa password?
+                </Link>
+              </div>
+            </div>
           </Field>
 
           {error && (
@@ -86,9 +132,23 @@ function LoginForm() {
             Masuk
           </Button>
         </form>
+
+        <div className="my-5 flex items-center gap-3">
+          <span className="h-px flex-1 bg-line-soft" />
+          <span className="text-[10px] uppercase tracking-widest text-ink-faint">atau</span>
+          <span className="h-px flex-1 bg-line-soft" />
+        </div>
+
+        <Link
+          href="/register"
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-line bg-base-600 px-4 py-2 text-sm text-ink transition-colors hover:bg-base-700"
+        >
+          Buat akun baru
+        </Link>
       </div>
-      <p className="mt-4 text-center text-[11px] text-ink-faint">
-        Hanya akun terdaftar yang bisa masuk. Hubungi admin untuk akses.
+      <p className="mt-4 text-center text-[11px] leading-relaxed text-ink-faint">
+        Akun baru wajib verifikasi email sebelum bisa masuk. Akses node &amp; server diatur admin
+        lewat halaman Users.
       </p>
     </div>
   );
