@@ -56,7 +56,7 @@ const sections = [
 
 export default function TermsOfServicePage() {
   return (
-    <div className="flex min-h-screen items-start justify-center bg-base px-4 py-10 sm:py-14">
+    <div className="flex min-h-screen items-start justify-center px-4 py-10 sm:py-14">
       <div
         aria-hidden
         className="pointer-events-none fixed inset-0 opacity-40"

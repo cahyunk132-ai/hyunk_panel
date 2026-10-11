@@ -34,7 +34,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body className="min-h-screen bg-base font-sans text-ink">
+      <body className="min-h-screen font-sans text-ink">
         <ThemeProvider>{children}</ThemeProvider>
         <SpeedInsights />
       </body>
