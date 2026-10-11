@@ -22,7 +22,10 @@ export default async function NetworkPage({ params }: { params: { id: string } }
   const canRead = await hasPermission(user, 'server.read', server.id);
   if (!canRead) notFound();
 
-  const canManage = isPanelAdmin(user.role) || server.owner_id === user.id || canRead;
+  const canManage =
+    isPanelAdmin(user.role) ||
+    server.owner_id === user.id ||
+    (await hasPermission(user, 'server.read', server.id));
 
   return <SubdomainManager serverId={server.id} canManage={canManage} />;
 }
