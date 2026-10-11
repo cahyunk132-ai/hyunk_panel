@@ -58,7 +58,7 @@ const sections: { title: string; body: React.ReactNode[] }[] = [
 
 export default function PrivacyPage() {
   return (
-    <div className="flex min-h-screen items-start justify-center bg-base px-4 py-10 sm:py-14">
+    <div className="flex min-h-screen items-start justify-center px-4 py-10 sm:py-14">
       {/* dekorasi latar, sama seperti layout auth */}
       <div
         aria-hidden

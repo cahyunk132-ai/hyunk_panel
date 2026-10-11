@@ -18,7 +18,8 @@ html {
 
 html,
 body {
-  @apply bg-base text-ink antialiased;
+  @apply text-ink antialiased;
+  background: transparent;
   font-feature-settings: 'cv02', 'cv03', 'cv04';
 }
 

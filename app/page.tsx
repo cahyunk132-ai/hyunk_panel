@@ -41,7 +41,7 @@ function PanelLogo({ className = '' }: { className?: string }) {
 
 export default function HomePage() {
   return (
-    <main className="relative isolate min-h-screen overflow-hidden bg-base">
+    <main className="relative isolate min-h-screen overflow-hidden">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-10"
