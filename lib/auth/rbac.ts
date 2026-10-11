@@ -54,6 +54,7 @@ const ASSIGNED_SERVER_ACTIONS = new Set([
   'files.edit',
   'backups',
   'backup.restore',
+  'backup.schedule',
   'backups.delete',
   'players',
   'assign_subuser',

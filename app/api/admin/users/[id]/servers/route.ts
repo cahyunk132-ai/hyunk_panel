@@ -16,6 +16,8 @@ const VALID_PERMISSIONS = new Set([
   'files.edit',
   'backups',
   'backup.restore',
+  'backup.schedule',
+  'backups.delete',
   'players',
   'monitoring',
 ]);
@@ -32,6 +34,7 @@ const DEFAULT_USER_PERMISSIONS = [
   'backups',
   'backup.restore',
   'backups.delete',
+  'backup.schedule',
   'players',
 ];
 

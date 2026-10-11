@@ -214,6 +214,7 @@ export async function POST(request: NextRequest) {
           'backups',
           'backup.restore',
           'backups.delete',
+          'backup.schedule',
           'players',
         ],
       },
