@@ -307,8 +307,15 @@ Retention: backup cloud terlama dihapus otomatis bila melebihi limit
   retention (1–20), ignore files. Tombol **Run now** menjalankan pipeline langsung.
 - **Riwayat** — section **Backup History** di tab Backups: waktu, ukuran, provider, status,
   dan link file di cloud.
-- **Admin** — halaman **Auto Backups** (`/admin/backups`, Owner Panel & Admin): overview semua
-  jadwal + status terakhir + tombol **Force run**.
+- **Admin** — dua halaman khusus Owner Panel & Admin:
+  - **Backup Monitor** (`/admin/backups`): semua backup log dari seluruh user/server dalam satu
+    tampilan. Kartu statistik (backup hari ini, total storage terpakai, sukses vs gagal hari ini,
+    jumlah jadwal aktif), tabel 20 baris/halaman dengan filter status/provider/rentang tanggal,
+    search nama server atau email owner, sort waktu, auto refresh 30 detik, dan baris yang bisa
+    di-expand untuk melihat `error_message` pada backup yang gagal. Data diambil dari
+    `backup_logs` dengan service role (bypass RLS) lewat `GET /api/admin/backup-logs`.
+  - **Auto Backups** (`/admin/backup-schedules`): overview semua jadwal + status terakhir +
+    tombol **Force run**.
 
 ### Konvensi penyimpanan di cloud
 
@@ -357,6 +364,7 @@ Retention: backup cloud terlama dihapus otomatis bila melebihi limit
 | `GET /api/cron/backup` | handler Vercel Cron (Bearer `CRON_SECRET`) |
 | `GET /api/admin/backups` | overview semua jadwal (Owner Panel & Admin) |
 | `POST /api/admin/backups/run` | force run satu jadwal (body `{ schedule_id }`) |
+| `GET /api/admin/backup-logs` | monitoring semua backup log (Owner Panel & Admin): filter `status` (`all\\|pending\\|running\\|done\\|failed`), `provider`, `from`/`to` (`YYYY-MM-DD`), `q`, `sort` (`desc\\|asc`), `page` (20/halaman) + kartu statistik |
 
 > Bergantung pada Remote API aktif: Wings melaporkan hasil backup ke
 > `POST /api/remote/backups/{uuid}` (sudah ada). Tanpa itu, job menunggu sampai timeout

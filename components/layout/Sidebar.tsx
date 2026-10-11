@@ -69,13 +69,24 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     href: '/admin/backups',
-    label: 'Auto Backups',
+    label: 'Backup Monitor',
     adminOnly: true,
     icon: (
       <svg {...iconProps}>
         <path d="M4 5h16v11H4z" />
         <path d="M4 9h16M8 3v4M16 3v4" />
         <path d="M9 14.5 11 16l4-4" />
+      </svg>
+    ),
+  },
+  {
+    href: '/admin/backup-schedules',
+    label: 'Auto Backups',
+    adminOnly: true,
+    icon: (
+      <svg {...iconProps}>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
       </svg>
     ),
   },
