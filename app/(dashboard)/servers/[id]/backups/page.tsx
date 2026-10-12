@@ -24,7 +24,7 @@ export default async function BackupsPage({ params }: { params: { id: string } }
   return (
     <div className="space-y-4">
       <AutoBackupSchedule serverId={result.server.id} canManage={canManageSchedule} />
-      <BackupHistory serverId={result.server.id} />
+      <BackupHistory serverId={result.server.id} canRestore={canRestore} />
       <BackupManager
         serverId={result.server.id}
         canDelete={permissionsInclude(permissions, 'backups.delete')}

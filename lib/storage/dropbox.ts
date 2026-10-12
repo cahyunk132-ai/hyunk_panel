@@ -27,6 +27,11 @@ export interface DropboxUploadResult {
   size?: number;
 }
 
+export interface DropboxDownloadResult {
+  stream: ReadableStream<Uint8Array>;
+  size?: number;
+}
+
 function dropboxPath(serverName: string, filename: string): string {
   const seg = (s: string) => encodeURIComponent(s);
   return `/${DROPBOX_ROOT_FOLDER}/${seg(serverName)}/${seg(filename)}`;
@@ -214,6 +219,34 @@ export async function deleteDropboxFile(token: string, path: string): Promise<vo
     }
   }
 }
+
+/** Download file dari Dropbox sebagai stream berdasarkan path (tanpa simpan ke disk). */
+export async function downloadFromDropbox(
+  token: string,
+  path: string,
+): Promise<DropboxDownloadResult> {
+  const normalizedPath = path.startsWith('/') || path.startsWith('id:') ? path : `/${path}`;
+  const res = await fetch('https://content.dropboxapi.com/2/files/download', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Dropbox-API-Arg': JSON.stringify({ path: normalizedPath }),
+    },
+    cache: 'no-store',
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(
+      `Dropbox: gagal mengunduh file → ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`,
+    );
+  }
+  const len = Number(res.headers.get('content-length'));
+  return {
+    stream: res.body,
+    size: Number.isFinite(len) && len > 0 ? len : undefined,
+  };
+}
+
+export const downloadDropboxFile = downloadFromDropbox;
 
 /** Perkiraan URL file di web Dropbox. */
 export function getDropboxFileUrl(path: string): string {

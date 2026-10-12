@@ -36,13 +36,13 @@ export async function POST(request: NextRequest) {
   // ── Step 1: Validasi ──────────────────────────────────────────────────────
   const service = getSupabaseServiceClient();
 
-  const [sourceNode, targetNode] = await Promise.all([
+  const [{ data: sourceNode }, { data: targetNode }] = await Promise.all([
     service.from('nodes').select('*').eq('id', sourceNodeId).maybeSingle(),
     service.from('nodes').select('*').eq('id', targetNodeId).maybeSingle(),
   ]);
 
-  const src = sourceNode as import('@/types').NodeRow | null;
-  const tgt = targetNode as import('@/types').NodeRow | null;
+  const src = (sourceNode as import('@/types').NodeRow | null) ?? null;
+  const tgt = (targetNode as import('@/types').NodeRow | null) ?? null;
 
   if (!src) {
     return Response.json({ error: 'Node sumber tidak ditemukan' }, { status: 404 });

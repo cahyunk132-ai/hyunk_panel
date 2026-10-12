@@ -21,6 +21,11 @@ export interface GDriveUploadResult {
   size?: number;
 }
 
+export interface GDriveDownloadResult {
+  stream: ReadableStream<Uint8Array>;
+  size?: number;
+}
+
 interface DriveFileList {
   files?: Array<{ id: string; name: string }>;
 }
@@ -138,6 +143,29 @@ export async function deleteGDriveFile(token: string, fileId: string): Promise<v
     throw new Error(`GDrive: gagal menghapus file → ${res.status}`);
   }
 }
+
+/** Download file dari Google Drive sebagai stream berdasarkan file ID (tanpa simpan ke disk). */
+export async function downloadFromGDrive(
+  token: string,
+  fileId: string,
+): Promise<GDriveDownloadResult> {
+  const res = await apiFetch(
+    `/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`,
+    { token, method: 'GET' },
+  );
+  if (!res.ok || !res.body) {
+    throw new Error(
+      `GDrive: gagal mengunduh file → ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`,
+    );
+  }
+  const len = Number(res.headers.get('content-length'));
+  return {
+    stream: res.body,
+    size: Number.isFinite(len) && len > 0 ? len : undefined,
+  };
+}
+
+export const downloadGDriveFile = downloadFromGDrive;
 
 /** URL lihat file di Google Drive. */
 export function getGDriveFileUrl(fileId: string): string {

@@ -19,6 +19,11 @@ export interface WebdavUploadResult {
   size?: number;
 }
 
+export interface WebdavDownloadResult {
+  stream: ReadableStream<Uint8Array>;
+  size?: number;
+}
+
 function clientFor(config: WebdavStorageConfig): WebDAVClient {
   return createClient(config.url.replace(/\/+$/, ''), {
     username: config.username,
@@ -65,6 +70,31 @@ export async function deleteWebDAVFile(config: WebdavStorageConfig, path: string
   const client = clientFor(config);
   await client.deleteFile(path).catch(() => {});
 }
+
+/** Download file dari WebDAV sebagai stream berdasarkan path (tanpa simpan ke disk). */
+export async function downloadFromWebDAV(
+  config: WebdavStorageConfig,
+  path: string,
+): Promise<WebdavDownloadResult> {
+  const client = clientFor(config);
+  const target = path.startsWith('/') ? path : `/${path}`;
+  let size: number | undefined;
+  try {
+    const stat = (await client.stat(target)) as { size?: number };
+    if (typeof stat?.size === 'number' && stat.size > 0) {
+      size = stat.size;
+    }
+  } catch (err) {
+    throw new Error(
+      `WebDAV: file tidak ditemukan atau tidak dapat diakses (${err instanceof Error ? err.message : path})`,
+    );
+  }
+  const nodeStream = client.createReadStream(target) as unknown as Readable;
+  const stream = Readable.toWeb(nodeStream) as unknown as ReadableStream<Uint8Array>;
+  return { stream, size };
+}
+
+export const downloadWebDAVFile = downloadFromWebDAV;
 
 /** URL langsung ke file WebDAV. */
 export function getWebDAVFileUrl(config: WebdavStorageConfig, path: string): string {

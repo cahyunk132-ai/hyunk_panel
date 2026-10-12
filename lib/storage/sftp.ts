@@ -20,6 +20,11 @@ export interface SftpUploadResult {
   size?: number;
 }
 
+export interface SftpDownloadResult {
+  stream: ReadableStream<Uint8Array>;
+  size?: number;
+}
+
 function remoteDir(config: SftpStorageConfig, serverName: string): string {
   const base = (config.path || '/').replace(/\/+$/, '');
   return `${base}/${SFTP_ROOT_FOLDER}/${serverName}`;
@@ -79,6 +84,69 @@ export async function deleteSFTPFile(config: SftpStorageConfig, path: string): P
     await sftp.delete(path).catch(() => {});
   });
 }
+
+/** Download file dari SFTP sebagai stream berdasarkan path lengkap (tanpa simpan ke disk). */
+export async function downloadFromSFTP(
+  config: SftpStorageConfig,
+  path: string,
+): Promise<SftpDownloadResult> {
+  const sftp = new SftpClient();
+  await sftp.connect({
+    host: config.host,
+    port: config.port || 22,
+    username: config.username,
+    password: config.password,
+  });
+
+  let size: number | undefined;
+  try {
+    const stat = await sftp.stat(path);
+    if (typeof stat.size === 'number' && stat.size > 0) {
+      size = stat.size;
+    }
+  } catch (err) {
+    await sftp.end().catch(() => {});
+    throw new Error(
+      `SFTP: file tidak ditemukan atau tidak dapat diakses (${err instanceof Error ? err.message : path})`,
+    );
+  }
+
+  const nodeStream = sftp.createReadStream(path) as unknown as Readable;
+  const iterator = nodeStream[Symbol.asyncIterator]();
+  let ended = false;
+  const cleanup = async () => {
+    if (ended) return;
+    ended = true;
+    nodeStream.destroy();
+    await sftp.end().catch(() => {});
+  };
+
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { value, done } = await iterator.next();
+        if (done) {
+          await cleanup();
+          controller.close();
+          return;
+        }
+        controller.enqueue(
+          value instanceof Uint8Array ? value : new Uint8Array(Buffer.from(value as ArrayBuffer)),
+        );
+      } catch (err) {
+        await cleanup();
+        controller.error(err);
+      }
+    },
+    async cancel() {
+      await cleanup();
+    },
+  });
+
+  return { stream, size };
+}
+
+export const downloadSFTPFile = downloadFromSFTP;
 
 /** Representasi URL untuk file SFTP. */
 export function getSFTPFileUrl(config: SftpStorageConfig, path: string): string {

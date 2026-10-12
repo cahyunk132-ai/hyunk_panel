@@ -24,6 +24,11 @@ export interface S3UploadResult {
   size?: number;
 }
 
+export interface S3DownloadResult {
+  stream: ReadableStream<Uint8Array>;
+  size?: number;
+}
+
 /** Payload hash untuk request tanpa body (GET/DELETE). */
 const EMPTY_SHA256 = crypto.createHash('sha256').update('').digest('hex');
 /** Payload hash untuk request dengan body stream (PUT) — valid di HTTPS. */
@@ -194,6 +199,37 @@ export async function deleteS3Object(config: S3StorageConfig, key: string): Prom
     throw new Error(`S3 delete → ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`);
   }
 }
+
+/** Download objek dari S3 sebagai stream berdasarkan key (tanpa simpan ke disk). */
+export async function downloadFromS3(
+  config: S3StorageConfig,
+  key: string,
+): Promise<S3DownloadResult> {
+  const signed = signS3Request({
+    method: 'GET',
+    config,
+    key,
+    payloadHash: EMPTY_SHA256,
+  });
+  const { host: _host, ...sendHeaders } = signed.headers;
+  const res = await fetch(signed.url, {
+    method: 'GET',
+    headers: sendHeaders,
+    cache: 'no-store',
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(
+      `S3 download → ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`,
+    );
+  }
+  const len = Number(res.headers.get('content-length'));
+  return {
+    stream: res.body,
+    size: Number.isFinite(len) && len > 0 ? len : undefined,
+  };
+}
+
+export const downloadS3Object = downloadFromS3;
 
 /** URL download path-style (untuk S3 publik / link sementara bisa ditambah). */
 export function getS3FileUrl(config: S3StorageConfig, key: string): string {

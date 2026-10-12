@@ -33,6 +33,11 @@ export interface UploadResult {
   size?: number;
 }
 
+export interface DownloadResult {
+  stream: ReadableStream<Uint8Array>;
+  size?: number;
+}
+
 export interface ProviderTestResult {
   ok: boolean;
   message: string;
@@ -181,6 +186,29 @@ export async function deleteFromProvider(provider: StorageProviderRow, fileId: s
       return sftp.deleteSFTPFile(getSftpConfig(provider), fileId);
     case 'webdav':
       return webdav.deleteWebDAVFile(getWebdavConfig(provider), fileId);
+    case 'onedrive':
+      throw new Error('OneDrive belum didukung (coming soon)');
+    default:
+      throw new Error(`Provider storage tidak dikenal: ${provider.provider}`);
+  }
+}
+
+/** Download stream file backup dari cloud berdasarkan storage_file_id (dipakai Cloud Backup Restore). */
+export async function downloadFromProvider(
+  provider: StorageProviderRow,
+  fileId: string,
+): Promise<DownloadResult> {
+  switch (provider.provider) {
+    case 'gdrive':
+      return gdrive.downloadFromGDrive(await getValidAccessToken(provider), fileId);
+    case 'dropbox':
+      return dropbox.downloadFromDropbox(await getValidAccessToken(provider), fileId);
+    case 's3':
+      return s3.downloadFromS3(getS3Config(provider), fileId);
+    case 'sftp':
+      return sftp.downloadFromSFTP(getSftpConfig(provider), fileId);
+    case 'webdav':
+      return webdav.downloadFromWebDAV(getWebdavConfig(provider), fileId);
     case 'onedrive':
       throw new Error('OneDrive belum didukung (coming soon)');
     default:
