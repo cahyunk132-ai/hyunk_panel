@@ -322,10 +322,17 @@ export class WingsClient {
     await this.request('DELETE', `/api/servers/${serverUuid}/backup/${backupUuid}`);
   }
 
-  /** POST /api/servers/{uuid}/backup/{backup}/restore — truncate sebelum restore. */
+  /**
+   * POST /api/servers/{uuid}/backup/{backup}/restore — body JSON:
+   * `{ adapter: "wings", truncate_directory }`. Wings (router_server_backup.go)
+   * membaca `adapter` sebagai field WAJIB dan `truncate` lewat `truncate_directory`
+   * di body, bukan query string. Restore berjalan asinkron di Wings (respons 202).
+   */
   async restoreBackup(serverUuid: string, backupUuid: string, truncate = false): Promise<void> {
-    const qs = truncate ? '?truncate=true' : '';
-    await this.request('POST', `/api/servers/${serverUuid}/backup/${backupUuid}/restore${qs}`);
+    await this.request('POST', `/api/servers/${serverUuid}/backup/${backupUuid}/restore`, {
+      adapter: 'wings',
+      truncate_directory: truncate,
+    });
   }
 
   /**
