@@ -360,11 +360,33 @@ export class WingsClient {
     downloadUrl: string,
     truncate = false,
   ): Promise<void> {
-    await this.request('POST', `/api/servers/${serverUuid}/backup/${backupUuid}/restore`, {
-      adapter: 's3',
-      download_url: downloadUrl,
-      truncate_directory: truncate,
-    });
+    // Wings memulai restore di background goroutine dan return 200/202 segera.
+    // Jangan menunggu restore selesai — itu bisa >10 menit untuk file besar.
+    const res = await fetch(
+      `${this.baseUrl}/api/servers/${serverUuid}/backup/${backupUuid}/restore`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          adapter: 's3',
+          download_url: downloadUrl,
+          truncate_directory: truncate,
+        }),
+        cache: 'no-store',
+        signal: AbortSignal.timeout(15_000), // cukup untuk validasi Wings
+      },
+    );
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new WingsError(res.status, `Wings restore → ${res.status}: ${text.slice(0, 400)}`);
+    }
+
+    // Wings sudah menerima restore; body respons tidak diperlukan.
+    await res.body?.cancel().catch(() => undefined);
   }
 
   /**

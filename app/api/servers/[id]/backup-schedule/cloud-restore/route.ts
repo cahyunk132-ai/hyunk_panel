@@ -8,7 +8,7 @@ import { createBackupRestoreStreamToken } from '@/lib/wings/jwt';
 import type { BackupLogRow, StorageProviderRow } from '@/types';
 
 export const runtime = 'nodejs';
-// Restore dari cloud bisa berjalan lama untuk file backup besar.
+// Restore berjalan di background Wings; batas ini hanya berlaku pada platform yang mendukungnya.
 export const maxDuration = 300;
 
 interface CloudRestoreBody {
@@ -30,15 +30,12 @@ interface CloudRestoreBody {
  *   1. Buat URL signed (JWT, secret = token node) di panel untuk wings
  *      mengunduh arsip: GET /api/remote/backup-restore/{logId}?token=...
  *      (panel mem-proxy stream dari cloud storage)
- *   2. Pre-flight: pastikan file masih ada di cloud storage SEBELUM
- *      meminta restore — request restore menghentikan server, sehingga
- *      file hilang harus gagal sebelum server berhenti
- *   3. Trigger restore: POST /api/servers/{uuid}/backup/{uuid}/restore di
+ *   2. Trigger restore: POST /api/servers/{uuid}/backup/{uuid}/restore di
  *      Wings dengan { adapter: "s3", download_url, truncate_directory }.
- *      Wings sendiri yang mengunduh arsip (TIDAK lewat /upload/file, jadi
- *      tidak kena api.upload_limit 100 MB), truncate bila diminta,
- *      extract arsip, dan tidak meninggalkan file sementara di node
- *   4. Catat di audit log (activity_logs)
+ *      Wings memvalidasi request lalu menjalankan download, truncate, dan
+ *      extract di background — panel hanya menunggu konfirmasi penerimaan,
+ *      bukan menunggu file selesai diproses.
+ *   3. Catat di audit log (activity_logs)
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   const user = await requireUser();
@@ -160,24 +157,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     `?token=${encodeURIComponent(streamToken)}`;
 
   try {
-    // 1. Pre-flight: pastikan file masih ada di cloud storage SEBELUM
-    //    meminta restore — request restore menghentikan server, sehingga
-    //    file hilang harus gagal tanpa menghentikan server. Cukup cek
-    //    header respons; body dibatalkan segera.
-    const preflight = await fetch(restoreStreamUrl, { cache: 'no-store' });
-    if (!preflight.ok) {
-      const errText = await preflight.text().catch(() => '');
-      throw new Error(
-        `Verifikasi file di cloud storage gagal → ${preflight.status}: ${errText.slice(0, 300)}`,
-      );
-    }
-    await preflight.body?.cancel().catch(() => undefined);
-
-    // 2. Trigger restore. Wings sendiri yang mengunduh arsip dari
-    //    restoreStreamUrl (tidak lewat POST /upload/file, jadi tidak kena
-    //    api.upload_limit 100 MB), menghentikan server, truncate bila
-    //    diminta, extract arsip, dan tidak meninggalkan file sementara di
-    //    node. Berjalan asinkron di Wings (respons 202).
+    // Wings menerima request lalu menjalankan download dan extract di
+    // background. Tunggu hanya sampai Wings mengonfirmasi penerimaan.
     await resolved.client.restoreBackupFromUrl(
       resolved.server.uuid,
       tempBackupUuid,
@@ -209,6 +190,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       storage_file_name: logData.storage_file_name,
       provider: providerRow.provider,
       truncate,
+      message: 'Restore dimulai. Server akan restart otomatis setelah proses selesai.',
     });
   } catch (err) {
     // Tidak ada file sementara di node yang perlu dibersihkan (restore

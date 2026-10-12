@@ -15,10 +15,7 @@ export type LogWithProvider = BackupLogRow & {
   download_url: string | null;
 };
 
-export type CloudRestoreStepStatus =
-  | 'Mengunduh dari cloud...'
-  | 'Mengupload ke server...'
-  | 'Selesai!';
+export type CloudRestoreStepStatus = 'Memulai restore...' | 'Restore berjalan di background';
 
 const STATUS_TONES: Record<BackupLogStatus, 'yellow' | 'green' | 'red'> = {
   pending: 'yellow',
@@ -96,13 +93,7 @@ export function BackupHistory({
     if (!cloudRestoringLog || cloudBusy) return;
     setCloudBusy(true);
     setCloudRestoreError(null);
-    setCloudRestoreStatus('Mengunduh dari cloud...');
-
-    let switchedToUpload = false;
-    const stepTimer = setTimeout(() => {
-      switchedToUpload = true;
-      setCloudRestoreStatus('Mengupload ke server...');
-    }, 1200);
+    setCloudRestoreStatus('Memulai restore...');
 
     try {
       const res = await fetch(`/api/servers/${serverId}/backup-schedule/cloud-restore`, {
@@ -115,27 +106,15 @@ export function BackupHistory({
         }),
       });
       const json = await res.json().catch(() => ({}));
-      clearTimeout(stepTimer);
 
       if (!res.ok) {
         throw new Error(json.error || 'Gagal melakukan restore backup dari cloud');
       }
 
-      if (!switchedToUpload) {
-        setCloudRestoreStatus('Mengupload ke server...');
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
-
-      setCloudRestoreStatus('Selesai!');
-      toast.success(
-        `Backup "${cloudRestoringLog.storage_file_name ?? cloudRestoringLog.backup_uuid ?? 'cloud'}" berhasil direstore dari cloud`,
-      );
-
-      await new Promise((resolve) => setTimeout(resolve, 900));
-      setCloudRestoringLog(null);
-      setCloudRestoreStatus(null);
+      setCloudRestoreStatus('Restore berjalan di background');
+      const message = typeof json.message === 'string' ? json.message : 'Restore dimulai.';
+      toast.success(`${message} Pantau status server di tab Console/Overview.`);
     } catch (err) {
-      clearTimeout(stepTimer);
       const message =
         err instanceof Error ? err.message : 'Gagal melakukan restore backup dari cloud';
       setCloudRestoreError(message);
@@ -295,13 +274,18 @@ export function BackupHistory({
           {cloudRestoreStatus && (
             <div
               className={`rounded-lg border px-4 py-3 text-xs font-medium ${
-                cloudRestoreStatus === 'Selesai!'
+                cloudRestoreStatus === 'Restore berjalan di background'
                   ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
                   : 'border-accent/30 bg-accent/10 text-accent'
               }`}
               role="status"
             >
               {cloudRestoreStatus}
+              {cloudRestoreStatus === 'Restore berjalan di background' && (
+                <p className="mt-1 font-normal opacity-90">
+                  Pantau status server dari tab Console/Overview.
+                </p>
+              )}
             </div>
           )}
 
@@ -318,15 +302,17 @@ export function BackupHistory({
               onClick={closeCloudRestoreModal}
               disabled={cloudBusy}
             >
-              Batal
+              {cloudRestoreStatus === 'Restore berjalan di background' ? 'Tutup' : 'Batal'}
             </Button>
             <Button
               size="sm"
               onClick={restoreFromCloud}
               loading={cloudBusy}
-              disabled={cloudBusy || cloudRestoreStatus === 'Selesai!'}
+              disabled={cloudBusy || cloudRestoreStatus === 'Restore berjalan di background'}
             >
-              {cloudRestoreStatus ?? 'Restore'}
+              {cloudRestoreStatus === 'Restore berjalan di background'
+                ? 'Restore dimulai'
+                : cloudRestoreStatus ?? 'Restore'}
             </Button>
           </div>
         </div>
