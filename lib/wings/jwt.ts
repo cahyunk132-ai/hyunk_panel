@@ -115,3 +115,85 @@ export function createBackupDownloadToken(
     scope: 'backup-download',
   });
 }
+
+/**
+ * JWT signed-streaming untuk Cloud Restore:
+ * GET {panel}/api/remote/backup-restore/{logId}?token=...
+ *
+ * Diverifikasi OLE PANEL SENDIRI (bukan wings) dengan token node sebagai
+ * secret — HTTP client restore di wings hanya GET URL tanpa header
+ * Authorization (lihat backupRestoreHttpClient di wings
+ * router_server_backup.go), sehingga autentikasi harus ada di URL.
+ */
+export function createBackupRestoreStreamToken(
+  ctx: WingsTokenContext & { nodeId: string },
+  backupLogId: string,
+  ttlSeconds = 900,
+): string {
+  const now = Math.floor(Date.now() / 1000);
+  return signWingsJwt(ctx.nodeSecret, {
+    iat: now,
+    nbf: now - 5,
+    exp: now + ttlSeconds,
+    jti: crypto.randomUUID(),
+    node_id: ctx.nodeId,
+    server_uuid: ctx.serverUuid,
+    user_uuid: ctx.userUuid,
+    backup_log_id: backupLogId,
+    iss: 'hyunk-panel',
+    scope: 'backup-restore-stream',
+  });
+}
+
+/**
+ * Decode payload JWT TANPA verifikasi signature — dipakai untuk menemukan
+ * secret (token node mana) yang harus dipakai saat verifikasi.
+ */
+export function decodeWingsJwtPayload(token: string): Record<string, unknown> | null {
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const parsed: unknown = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Verifikasi JWT HS256 yang ditandatangani dengan token node — versi
+ * panel-side untuk signed streaming endpoint (mirip logika wings
+ * router/tokens/*.go: cek alg, signature, exp, dan iat tidak jauh di masa
+ * depan).
+ */
+export function verifyWingsJwt(token: string, secret: string): Record<string, unknown> | null {
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  const [headerB64, payloadB64, signatureB64] = parts;
+
+  let header: { alg?: string };
+  try {
+    header = JSON.parse(Buffer.from(headerB64, 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+  if (header.alg !== 'HS256') return null;
+
+  const expected = crypto.createHmac('sha256', secret).update(`${headerB64}.${payloadB64}`).digest();
+  const provided = Buffer.from(signatureB64, 'base64url');
+  if (expected.byteLength !== provided.byteLength || !crypto.timingSafeEqual(expected, provided)) {
+    return null;
+  }
+
+  const claims = decodeWingsJwtPayload(token);
+  if (!claims) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  if (typeof claims.exp !== 'number' || claims.exp < now) return null;
+  // Toleransi clock skew 60 detik — semangatnya sama dengan penolakan token
+  // wings untuk iat yang tidak wajar (isDenylisted).
+  if (typeof claims.iat !== 'number' || claims.iat > now + 60) return null;
+  return claims;
+}

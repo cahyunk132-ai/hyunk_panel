@@ -336,6 +336,38 @@ export class WingsClient {
   }
 
   /**
+   * POST /api/servers/{uuid}/backup/{uuid}/restore — body JSON:
+   * `{ adapter: "s3", download_url, truncate_directory }`.
+   *
+   * Varian `restoreBackup()` untuk arsip yang TIDAK ada di node (Cloud
+   * Restore dari GDrive/Dropbox/S3/SFTP/WebDAV): Wings sendiri yang
+   * mengunduh `downloadUrl` lalu men-stream-nya langsung ke proses restore
+   * (postServerRestoreBackup, router_server_backup.go). Konsekuensinya:
+   *  - tidak kena `api.upload_limit` (default 100 MB) milik /upload/file,
+   *  - tidak ada file backup sementara yang tersisa di node setelah restore,
+   *  - URL harus bisa di-reach dari node (persyaratan yang sama dengan
+   *    Remote API panel) dan response Content-Type-nya
+   *    application/x-gzip|application/gzip (isSupportedBackupRestoreContentType);
+   *    ekstraksi aktual memakai mholt/archives format.Extract yang
+   *    auto-detect format arsip.
+   *
+   * Restore berjalan asinkron di Wings (respons 202) — sama seperti
+   * `restoreBackup()`.
+   */
+  async restoreBackupFromUrl(
+    serverUuid: string,
+    backupUuid: string,
+    downloadUrl: string,
+    truncate = false,
+  ): Promise<void> {
+    await this.request('POST', `/api/servers/${serverUuid}/backup/${backupUuid}/restore`, {
+      adapter: 's3',
+      download_url: downloadUrl,
+      truncate_directory: truncate,
+    });
+  }
+
+  /**
    * GET /download/backup?token= — response body mentah untuk di-stream
    * (auto backup ke cloud storage; file bisa >1GB, jangan di-buffer).
    * Mengembalikan Response apa adanya — pemanggil wajib memeriksa res.body.

@@ -4,7 +4,7 @@ import { requireUser } from '@/lib/auth/session';
 import { checkPermission } from '@/lib/auth/rbac';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { resolveServerWings, logActivity } from '@/lib/wings/resolve';
-import { downloadFromProvider } from '@/lib/storage';
+import { createBackupRestoreStreamToken } from '@/lib/wings/jwt';
 import type { BackupLogRow, StorageProviderRow } from '@/types';
 
 export const runtime = 'nodejs';
@@ -27,9 +27,17 @@ interface CloudRestoreBody {
  *
  * Restore server langsung dari file backup yang tersimpan di cloud storage
  * (GDrive, Dropbox, S3, SFTP, WebDAV) tanpa perlu download manual ke disk:
- *   1. Ambil file backup dari cloud storage (stream download)
- *   2. Upload stream langsung ke Wings via /upload/file
- *   3. Trigger restore di Wings (truncate bila diminta + decompress arsip + bersihkan file sementara)
+ *   1. Buat URL signed (JWT, secret = token node) di panel untuk wings
+ *      mengunduh arsip: GET /api/remote/backup-restore/{logId}?token=...
+ *      (panel mem-proxy stream dari cloud storage)
+ *   2. Pre-flight: pastikan file masih ada di cloud storage SEBELUM
+ *      meminta restore — request restore menghentikan server, sehingga
+ *      file hilang harus gagal sebelum server berhenti
+ *   3. Trigger restore: POST /api/servers/{uuid}/backup/{uuid}/restore di
+ *      Wings dengan { adapter: "s3", download_url, truncate_directory }.
+ *      Wings sendiri yang mengunduh arsip (TIDAK lewat /upload/file, jadi
+ *      tidak kena api.upload_limit 100 MB), truncate bila diminta,
+ *      extract arsip, dan tidak meninggalkan file sementara di node
  *   4. Catat di audit log (activity_logs)
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
@@ -131,41 +139,53 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   const resolved = await resolveServerWings(checked.server);
   if (resolved instanceof Response) return resolved;
 
-  const extMatch = logData.storage_file_name?.match(/\.(tar\.gz|tgz|tar|zip)$/i);
-  const ext = extMatch ? extMatch[0].toLowerCase() : '.tar.gz';
-  const restoreFilename = `.cloud-restore-${crypto.randomUUID()}${ext}`;
+  // Identifier restore di Wings. Hanya dipakai di endpoint restore dan
+  // notifikasi status — restore adapter "s3" tidak membuat file backup
+  // nyata di node, jadi tidak ada yang perlu dihapus setelahnya.
+  const tempBackupUuid = crypto.randomUUID();
+
+  // URL signed (JWT, secret = token node, TTL 15 menit) yang dipakai Wings
+  // untuk mengunduh arsip langsung dari panel.
+  const streamToken = createBackupRestoreStreamToken(
+    {
+      nodeSecret: resolved.client.token,
+      nodeId: resolved.node.id,
+      serverUuid: resolved.server.uuid,
+      userUuid: user.id,
+    },
+    logData.id,
+  );
+  const restoreStreamUrl =
+    `${request.nextUrl.origin}/api/remote/backup-restore/${encodeURIComponent(logData.id)}` +
+    `?token=${encodeURIComponent(streamToken)}`;
 
   try {
-    // 1. Ambil file backup dari cloud storage (stream download).
-    const cloudDownload = await downloadFromProvider(providerRow, logData.storage_file_id);
+    // 1. Pre-flight: pastikan file masih ada di cloud storage SEBELUM
+    //    meminta restore — request restore menghentikan server, sehingga
+    //    file hilang harus gagal tanpa menghentikan server. Cukup cek
+    //    header respons; body dibatalkan segera.
+    const preflight = await fetch(restoreStreamUrl, { cache: 'no-store' });
+    if (!preflight.ok) {
+      const errText = await preflight.text().catch(() => '');
+      throw new Error(
+        `Verifikasi file di cloud storage gagal → ${preflight.status}: ${errText.slice(0, 300)}`,
+      );
+    }
+    await preflight.body?.cancel().catch(() => undefined);
 
-    // 2. Upload stream langsung ke Wings via /upload/file (tanpa simpan ke disk).
-    await resolved.client.uploadFileStream(
+    // 2. Trigger restore. Wings sendiri yang mengunduh arsip dari
+    //    restoreStreamUrl (tidak lewat POST /upload/file, jadi tidak kena
+    //    api.upload_limit 100 MB), menghentikan server, truncate bila
+    //    diminta, extract arsip, dan tidak meninggalkan file sementara di
+    //    node. Berjalan asinkron di Wings (respons 202).
+    await resolved.client.restoreBackupFromUrl(
       resolved.server.uuid,
-      user.id,
-      '/',
-      restoreFilename,
-      cloudDownload.stream,
-      cloudDownload.size,
+      tempBackupUuid,
+      restoreStreamUrl,
+      truncate,
     );
 
-    // 3. Trigger restore di Wings (truncate bila diminta → decompress arsip → hapus arsip sementara).
-    if (truncate) {
-      const existingEntries = await resolved.client.listFiles(resolved.server.uuid, '/');
-      const oldFiles = existingEntries
-        .map((entry) => entry.name)
-        .filter((name) => name && name !== restoreFilename);
-      if (oldFiles.length > 0) {
-        await resolved.client.deleteFiles(resolved.server.uuid, '/', oldFiles);
-      }
-    }
-
-    await resolved.client.decompressFile(resolved.server.uuid, '/', restoreFilename);
-    await resolved.client
-      .deleteFiles(resolved.server.uuid, '/', [restoreFilename])
-      .catch(() => undefined);
-
-    // 4. Catat di audit log.
+    // 3. Catat di audit log.
     await logActivity({
       userId: user.id,
       serverId: resolved.server.id,
@@ -191,11 +211,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       truncate,
     });
   } catch (err) {
-    // Pastikan file arsip sementara dibersihkan bila proses gagal di tengah jalan.
-    await resolved.client
-      .deleteFiles(resolved.server.uuid, '/', [restoreFilename])
-      .catch(() => undefined);
-
+    // Tidak ada file sementara di node yang perlu dibersihkan (restore
+    // adapter "s3" men-stream arsip langsung ke proses restore di Wings).
     const message =
       err instanceof Error ? err.message : 'Gagal melakukan restore backup dari cloud';
 
