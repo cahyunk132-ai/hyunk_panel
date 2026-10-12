@@ -16,8 +16,11 @@ function summarize(metadata: Record<string, unknown>): string {
   const parts: string[] = [];
   if (typeof metadata.command === 'string') parts.push(`"${metadata.command.slice(0, 60)}"`);
   if (typeof metadata.file === 'string') parts.push(metadata.file);
+  if (typeof metadata.storage_file_name === 'string') parts.push(metadata.storage_file_name);
+  if (typeof metadata.provider === 'string') parts.push(`provider: ${metadata.provider}`);
   if (Array.isArray(metadata.fields)) parts.push(`ubah: ${(metadata.fields as string[]).join(', ')}`);
   if (typeof metadata.backup_uuid === 'string') parts.push(`backup ${String(metadata.backup_uuid).slice(0, 8)}…`);
+  if (typeof metadata.truncate === 'boolean') parts.push(metadata.truncate ? 'truncate: on' : 'truncate: off');
   if (typeof metadata.successful === 'boolean') parts.push(metadata.successful ? 'sukses' : 'gagal');
   return parts.join(' · ');
 }

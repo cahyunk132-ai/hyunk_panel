@@ -10,8 +10,9 @@
  * yang tidak ada di sana.
  */
 
+import crypto from 'node:crypto';
 import { decryptToken } from './crypto';
-import { createBackupDownloadToken } from './jwt';
+import { createBackupDownloadToken, createUploadToken } from './jwt';
 import type {
   WingsFileStat,
   WingsResourceUsage,
@@ -352,6 +353,85 @@ export class WingsClient {
       );
     }
     return res;
+  }
+
+  /**
+   * Upload stream file ke Wings via `/upload/file` menggunakan JWT upload token.
+   * Stream diteruskan langsung sebagai multipart/form-data tanpa simpan ke disk
+   * maupun buffer penuh di memory.
+   */
+  async uploadFileStream(
+    serverUuid: string,
+    userUuid: string,
+    directory: string,
+    filename: string,
+    fileStream: ReadableStream<Uint8Array>,
+    contentLength?: number,
+    ttlSeconds = 900,
+  ): Promise<void> {
+    const token = createUploadToken(
+      { nodeSecret: this.token, serverUuid, userUuid },
+      ttlSeconds,
+    );
+    const boundary = `----hyunkpanel-${crypto.randomUUID()}`;
+    const safeName = filename.replace(/["\\\r\n]/g, '_');
+    const prefix = Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="files"; filename="${safeName}"\r\nContent-Type: application/gzip\r\n\r\n`,
+    );
+    const suffix = Buffer.from(`\r\n--${boundary}--\r\n`);
+    const reader = fileStream.getReader();
+    let sentPrefix = false;
+    let sentSuffix = false;
+
+    const multipartBody = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          if (!sentPrefix) {
+            sentPrefix = true;
+            controller.enqueue(prefix);
+            return;
+          }
+          const chunk = await reader.read();
+          if (chunk.done) {
+            if (!sentSuffix) {
+              sentSuffix = true;
+              controller.enqueue(suffix);
+            }
+            controller.close();
+            return;
+          }
+          controller.enqueue(chunk.value);
+        } catch (err) {
+          controller.error(err);
+        }
+      },
+      async cancel(reason) {
+        await reader.cancel(reason).catch(() => undefined);
+      },
+    });
+
+    const headers: Record<string, string> = {
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
+    };
+    if (contentLength !== undefined && Number.isFinite(contentLength) && contentLength >= 0) {
+      headers['Content-Length'] = String(prefix.byteLength + contentLength + suffix.byteLength);
+    }
+
+    const res = await fetch(this.uploadFileUrl(token, directory), {
+      method: 'POST',
+      headers,
+      body: multipartBody,
+      cache: 'no-store',
+      duplex: 'half',
+    } as RequestInit & { duplex: 'half' });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new WingsError(
+        res.status,
+        `Wings upload file → ${res.status}: ${text.slice(0, 400)}`,
+      );
+    }
   }
 
   // ── Lifecycle server ─────────────────────────────────────────────────────
