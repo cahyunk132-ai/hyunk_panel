@@ -8,6 +8,15 @@ name: Bot ke server asli (JawaSMP)
 # atau dari tab Actions di GitHub → "Run workflow".
 
 on:
+  # Dispatch manual baru bisa dipakai kalau file ini sudah ada di branch default.
+  # Karena pekerjaan ini di branch arena/*, jalur yang pasti bekerja adalah `push`:
+  # setiap push ke branch ini (yang menyentuh mcbot/ atau file workflow ini)
+  # otomatis menjalankan bot ke server asli.
+  push:
+    branches: [arena/68be8f12-hyunk-panel]
+    paths:
+      - '.github/workflows/bot-real-server.yml'
+      - 'mcbot/**'
   workflow_dispatch:
     inputs:
       server:
