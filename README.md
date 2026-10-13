@@ -41,8 +41,8 @@ Browser ──► /api/... (Next.js API route, serverless) ──► Wings API (
 ### 1. Supabase
 
 1. Buat project baru di [supabase.com](https://supabase.com).
-2. Buka **SQL Editor**, jalankan [`001_initial.sql`](supabase/migrations/001_initial.sql), [`002_role_management.sql`](supabase/migrations/002_role_management.sql), [`003_egg_system.sql`](supabase/migrations/003_egg_system.sql), [`004_auto_download.sql`](supabase/migrations/004_auto_download.sql), [`005_auto_backup.sql`](supabase/migrations/005_auto_backup.sql), [`006_server_subdomains.sql`](supabase/migrations/006_server_subdomains.sql), [`007_auto_server_users.sql`](supabase/migrations/007_auto_server_users.sql), dan [`008_count_user_subdomains.sql`](supabase/migrations/008_count_user_subdomains.sql), lalu [`009_drop_subdomain_quota.sql`](supabase/migrations/009_drop_subdomain_quota.sql), [`010_add_backup_schedule_permission.sql`](supabase/migrations/010_add_backup_schedule_permission.sql), dan [`011_announcements.sql`](supabase/migrations/011_announcements.sql).
-   Migration kedua menambahkan role hierarchy, subuser assignment, batas lima Owner Panel, dan policy RLS berbasis role. Migration ketiga menambahkan Egg, versi, assignment Egg ke node, serta referensi Egg/versi aktif pada server. Migration keempat menambahkan kolom auto-download pada versi Egg (provider, URL template custom, variabel, filename, flag executable). Migration kelima menambahkan **Auto Backup System**: tabel `storage_providers`, `backup_schedules`, dan `backup_logs` beserta RLS-nya. Migration keenam menambahkan **Subdomain Manager**: tabel `server_subdomains` (subdomain per server → IP:port via reverse proxy Wings) beserta RLS-nya. Migration ketujuh mengisi baris `server_users` yang hilang untuk server yang sudah ada plus trigger auto-assign owner. Migration kedelapan sempat menambahkan function `count_user_subdomains(uuid)` untuk kuota subdomain per user, dan migration kesembilan **menghapusnya** — sistem subdomain sekarang **satu subdomain aktif per server tanpa kuota per user**, jadi function kuota itu tidak dipakai lagi. Migration kesepuluh menambahkan permission `backup.schedule` pada assignment yang sudah ada. Migration kesebelas menambahkan **Announcement System**: tabel `announcements` (broadcast pengumuman admin → banner di panel user) beserta RLS-nya.
+2. Buka **SQL Editor**, jalankan [`001_initial.sql`](supabase/migrations/001_initial.sql), [`002_role_management.sql`](supabase/migrations/002_role_management.sql), [`003_egg_system.sql`](supabase/migrations/003_egg_system.sql), [`004_auto_download.sql`](supabase/migrations/004_auto_download.sql), [`005_auto_backup.sql`](supabase/migrations/005_auto_backup.sql), [`006_server_subdomains.sql`](supabase/migrations/006_server_subdomains.sql), [`007_auto_server_users.sql`](supabase/migrations/007_auto_server_users.sql), dan [`008_count_user_subdomains.sql`](supabase/migrations/008_count_user_subdomains.sql), lalu [`009_drop_subdomain_quota.sql`](supabase/migrations/009_drop_subdomain_quota.sql), [`010_add_backup_schedule_permission.sql`](supabase/migrations/010_add_backup_schedule_permission.sql), dan [`011_announcements.sql`](supabase/migrations/011_announcements.sql), lalu [`012_vps_terminal.sql`](supabase/migrations/012_vps_terminal.sql) untuk fitur VPS Terminal.
+   Migration kedua menambahkan role hierarchy, subuser assignment, batas lima Owner Panel, dan policy RLS berbasis role. Migration ketiga menambahkan Egg, versi, assignment Egg ke node, serta referensi Egg/versi aktif pada server. Migration keempat menambahkan kolom auto-download pada versi Egg (provider, URL template custom, variabel, filename, flag executable). Migration kelima menambahkan **Auto Backup System**: tabel `storage_providers`, `backup_schedules`, dan `backup_logs` beserta RLS-nya. Migration keenam menambahkan **Subdomain Manager**: tabel `server_subdomains` (subdomain per server → IP:port via reverse proxy Wings) beserta RLS-nya. Migration ketujuh mengisi baris `server_users` yang hilang untuk server yang sudah ada plus trigger auto-assign owner. Migration kedelapan sempat menambahkan function `count_user_subdomains(uuid)` untuk kuota subdomain per user, dan migration kesembilan **menghapusnya** — sistem subdomain sekarang **satu subdomain aktif per server tanpa kuota per user**, jadi function kuota itu tidak dipakai lagi. Migration kesepuluh menambahkan permission `backup.schedule` pada assignment yang sudah ada. Migration kesebelas menambahkan **Announcement System**: tabel `announcements` (broadcast pengumuman admin → banner di panel user) beserta RLS-nya. Migration kedua belas menambahkan tabel `vps`/`vps_users` untuk **VPS Terminal**; credential VPS wajib disimpan terenkripsi dengan `STORAGE_TOKEN_ENCRYPTION_KEY` dan hanya endpoint token yang boleh membacanya.
 3. Buat user pertama: **Authentication → Users → Add user** (email + password). Centang **Auto Confirm User** — sejak fitur [Email Verification](#email-verification--reset-password) aktif, akun dengan email belum terverifikasi hanya bisa membuka `/verify-email` dan tidak bisa memakai panel.
 4. Atur **Authentication → URL Configuration**: isi **Site URL** dengan `NEXT_PUBLIC_APP_URL` (mis. `https://panel.wangstore.web.id`) dan tambahkan `https://panel.wangstore.web.id/auth/callback` ke **Redirect URLs** supaya link verifikasi email & reset password kembali ke panel. Pastikan **Authentication → Providers → Email → Confirm email** aktif bila ingin pendaftaran baru wajib verifikasi, dan isi **SMTP** (Auth → SMTP) agar email benar-benar terkirim.
 5. Jadikan Owner Panel pertama — di SQL Editor:
@@ -63,6 +63,8 @@ Salin `.env.local.example` → `.env.local` (lokal) atau isi di **Vercel → Set
 | `WINGS_SEED_NODE_TOKEN` | token Wings node existing (dari `/etc/pterodactyl/config.yml` di node, field `token`) |
 | `NEXT_PUBLIC_APP_URL` | `https://panel.wangstore.web.id` |
 | `NEXT_PUBLIC_BASE_DOMAIN` | base domain Subdomain Manager, default `wangstore.web.id` |
+| `TERMINAL_SERVICE_URL` | URL HTTPS terminal service eksternal, mis. `https://terminal.wangstore.web.id` |
+| `TERMINAL_JWT_SECRET` | secret HS256 yang sama dengan terminal service (**rahasia — hanya server**) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth Google Drive (auto backup) — lihat [Auto Backup](#auto-backup-system-cloud-storage) |
 | `DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` | OAuth Dropbox (auto backup) |
 | `ONEDRIVE_CLIENT_ID` / `ONEDRIVE_CLIENT_SECRET` | OneDrive — **coming soon** (UI sudah ada, tombol disabled) |
@@ -81,6 +83,12 @@ vercel deploy      # atau connect repo di dashboard Vercel
 ```
 
 Set domain `panel.wangstore.web.id` ke project Vercel.
+
+### VPS Terminal eksternal
+
+Setelah menjalankan [`012_vps_terminal.sql`](supabase/migrations/012_vps_terminal.sql), isi tabel `public.vps` melalui provisioning server-side. Field `credential` harus merupakan hasil `encryptSecret(...)` dari `lib/storage/crypto.ts`, bukan password plaintext. Tambahkan user pada `public.vps_users` bila VPS dibagikan.
+
+Halaman `/vps` hanya mengambil metadata yang aman. Saat user membuka `/vps/{id}/terminal`, `GET /api/vps/{id}/terminal-token` memeriksa owner/assignment, mendekripsi credential di server, lalu menerbitkan JWT HS256 35 menit untuk `TERMINAL_SERVICE_URL`. Browser tidak pernah menerima credential terpisah.
 
 ### 4. Seed data existing (Fase 0)
 
@@ -137,6 +145,16 @@ Alur: node → tambah range port → tersimpan di `allocations` → create/edit 
 port yang tersedia (`assigned_to IS NULL`) → port ter-assign dan tidak bisa dipakai server lain.
 Membuat server lewat API tanpa `allocation_id` masih didukung (field `port` lama) dengan
 membuat allocation otomatis, berguna untuk impor/seed.
+
+### VPS Terminal API (panel internal)
+
+| Endpoint | Fungsi |
+|---|---|
+| `GET /api/vps/{id}/terminal-token` | User yang punya akses menerima `{ token, wsUrl }`; credential didekripsi server-side dan tidak dikembalikan sebagai field terpisah |
+| `GET /vps` | Daftar VPS yang dimiliki/di-assign ke user |
+| `GET /vps/{id}/terminal` | Terminal xterm.js via `wss://terminal.wangstore.web.id?token=...` |
+
+Terminal service menggunakan pesan JSON `{ type: "data", data: "<base64>" }`, `{ type: "resize", cols, rows }`, serta status/error seperti yang didukung UI.
 
 ### API player Bedrock (panel internal)
 
@@ -520,6 +538,7 @@ app/            → halaman (App Router) + API routes (panel + remote)
   (auth)/       → login, register, verify-email, forgot-password, reset-password
   auth/callback → landing link email Supabase (verifikasi signup & reset password)
 components/     → UI, layout, console (websocket), file manager, power, backup, users,
+                  terminal/ (xterm.js VPS terminal), vps/ (VPS cards),
                   announcements/ (banner pengumuman), admin/ (AnnouncementsAdmin, SubdomainsAdmin),
                   theme/ (ThemeProvider, AppearanceControls, drawer appearance), ui/Toaster (toast global)
 hooks/          → useWingsConsole (websocket), useServerStatus (polling)
@@ -535,6 +554,8 @@ lib/
   storage/      → auto backup: crypto.ts (enkripsi kredensial), schedule.ts (next_run_at),
                   tokens.ts (refresh OAuth), gdrive/dropbox/s3/sftp/webdav.ts (upload
                   streaming), backupJob.ts (pipeline cron/manual/admin)
+  terminal/     → jwt.ts (JWT HS256 35 menit untuk terminal service eksternal)
+  vps/          → access.ts (owner/assignment guard sebelum decrypt credential)
   utils/        → format.ts, constants.ts, toast.ts (toast store), app-url.ts (emailRedirectTo auth)
 supabase/migrations/001_initial.sql
 supabase/migrations/002_role_management.sql
@@ -547,6 +568,7 @@ supabase/migrations/008_count_user_subdomains.sql
 supabase/migrations/009_drop_subdomain_quota.sql
 supabase/migrations/010_add_backup_schedule_permission.sql
 supabase/migrations/011_announcements.sql
+supabase/migrations/012_vps_terminal.sql
 ```
 
 ## Catatan operasional

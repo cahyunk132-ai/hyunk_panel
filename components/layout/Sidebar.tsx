@@ -52,6 +52,16 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    href: '/vps',
+    label: 'VPS',
+    icon: (
+      <svg {...iconProps}>
+        <path d="M5 4h14v16H5z" />
+        <path d="m8 9 3 3-3 3M13 15h3" />
+      </svg>
+    ),
+  },
+  {
     href: '/storage',
     label: 'Storage',
     icon: (
@@ -213,8 +223,8 @@ export function Sidebar({
           if (item.alwaysVisible || item.href === '/storage') return true;
           if (item.adminOnly) return role === 'owner_panel' || role === 'admin';
           if (role === 'owner_panel' || role === 'admin') return true;
-          if (role === 'moderator') return ['/dashboard', '/servers', '/activity'].includes(item.href);
-          return item.href === '/servers';
+          if (role === 'moderator') return ['/dashboard', '/servers', '/vps', '/activity'].includes(item.href);
+          return item.href === '/servers' || item.href === '/vps';
         }).map((item) => {
           const active =
             item.href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(item.href);
