@@ -1,0 +1,134 @@
+name: Bot ke server asli (JawaSMP)
+
+# Workflow ini dipakai untuk MENGUJI bot `admin_gabut` ke server Minecraft asli
+# dari runner GitHub (internet bebas), karena sandbox Arena tidak boleh keluar.
+#
+# Cara pakai:
+#   gh workflow run "Bot ke server asli (JawaSMP)" --ref <branch> -f menit=10
+# atau dari tab Actions di GitHub → "Run workflow".
+
+on:
+  # Dispatch manual baru bisa dipakai kalau file ini sudah ada di branch default.
+  # Karena pekerjaan ini di branch arena/*, jalur yang pasti bekerja adalah `push`:
+  # setiap push ke branch ini (yang menyentuh mcbot/ atau file workflow ini)
+  # otomatis menjalankan bot ke server asli.
+  push:
+    branches: [arena/68be8f12-hyunk-panel]
+    paths:
+      - '.github/workflows/bot-real-server.yml'
+      - 'mcbot/**'
+  workflow_dispatch:
+    inputs:
+      server:
+        description: 'Alamat server (host atau host:port)'
+        required: false
+        default: 'node2.wangstore.web.id:25571'
+      versi:
+        description: 'Versi Minecraft (auto = deteksi dari ping)'
+        required: false
+        default: 'auto'
+      menit:
+        description: 'Berapa menit bot dijalankan'
+        required: false
+        default: '10'
+      username:
+        description: 'Nama bot'
+        required: false
+        default: 'admin_gabut'
+      tugas:
+        description: 'Task priority bot (auto/mine/farm/fight/explore)'
+        required: false
+        default: 'auto'
+      otak:
+        description: 'Otak: heuristic (offline) atau groq (butuh secret GROQ_API_KEY)'
+        required: false
+        default: 'heuristic'
+
+jobs:
+  bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: mcbot
+    env:
+      MC_SERVER: ${{ inputs.server || 'node2.wangstore.web.id:25571' }}
+      MC_VERSION: ${{ inputs.versi || 'auto' }}
+      MC_USERNAME: ${{ inputs.username || 'admin_gabut' }}
+      MC_AUTH: offline
+      BRAIN: ${{ inputs.otak || 'heuristic' }}
+      TASK: ${{ inputs.tugas || 'auto' }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      LOOP_INTERVAL_MS: '2500'
+      TRACE_FILE: ${{ github.workspace }}/mcbot/logs/trace-ci.jsonl
+      LOG_FILE: ${{ github.workspace }}/mcbot/logs/bot-ci.log
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Pasang dependensi
+        run: npm install --no-audit --no-fund
+
+      - name: Cek koneksi + versi server (ping status)
+        id: ping
+        continue-on-error: true
+        run: |
+          node -e "
+          const mc = require('minecraft-protocol');
+          const s = process.env.MC_SERVER;
+          const i = s.lastIndexOf(':');
+          const host = i === -1 ? s : s.slice(0, i);
+          const port = i === -1 ? 25565 : Number(s.slice(i + 1));
+          console.log('Menghubungi', host + ':' + port, '...');
+          mc.ping({ host, port, closeTimeout: 15000 }, (err, res) => {
+            if (err) { console.log('PING GAGAL:', err.code || '', err.message); process.exit(0); }
+            const d = res.description;
+            const motd = (typeof d === 'string' ? d : JSON.stringify(d)).replace(/§./g, '').trim();
+            console.log('MOTD     :', motd);
+            console.log('VERSI    :', res.version && res.version.name, '| protokol', res.version && res.version.protocol);
+            console.log('PEMAIN   :', res.players && res.players.online, '/', res.players && res.players.max);
+            console.log('SAMPEL   :', ((res.players && res.players.sample) || []).map(p => p.name).slice(0, 5).join(', ') || '-');
+          });
+          " 2>&1 | tee ping.txt
+
+      - name: Jalankan bot
+        id: bot
+        continue-on-error: true
+        run: |
+          MENIT="${{ inputs.menit || '10' }}"
+          echo "Menjalankan bot selama ${MENIT} menit ke $MC_SERVER ..."
+          mkdir -p logs
+          timeout "$(( MENIT * 60 + 20 ))" node src/index.mjs || echo "::warning::bot berhenti dengan kode $? (bisa jadi timeout normal)"
+
+      - name: Ringkasan
+        if: always()
+        run: |
+          {
+            echo "## Bot ke server asli"
+            echo ""
+            echo "- Server: \`$MC_SERVER\`"
+            echo "- Bot: \`$MC_USERNAME\` (auth: offline), otak: \`$BRAIN\`, tugas: \`$TASK\`"
+            echo ""
+            if [ -f ping.txt ]; then echo '### Hasil ping'; echo '```'; cat ping.txt; echo '```'; fi
+            if [ -f logs/bot-ci.log ]; then
+              echo '### 40 baris terakhir log bot'; echo '```'
+              tail -40 logs/bot-ci.log
+              echo '```'
+            else
+              echo '### Log bot'; echo 'Tidak ada logs/bot-ci.log — bot gagal start.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Simpan log & trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bot-logs
+          path: |
+            mcbot/logs/
+            mcbot/ping.txt
+          if-no-files-found: warn

@@ -1,0 +1,30 @@
+{
+  "name": "hyunk-mcbot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "admin_gabut \u2014 AI-controlled Minecraft bot (OODA loop). Groq as the decision brain, Mineflayer + pathfinder as the hands. Ships with a local cracked/offline dev server for end-to-end debugging.",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/index.mjs",
+    "dev:server": "node dev-server/server.mjs --auto-mob 60000 --kit-on-join",
+    "dev:bot": "node src/index.mjs --server 127.0.0.1:25565 --task auto",
+    "dev:director": "node dev-server/director.mjs",
+    "mock:groq": "node dev-server/mock-groq.mjs",
+    "selftest": "node scripts/selftest.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "dev:mock": "node dev-server/mock-groq.mjs",
+    "dev:all": "node dev-server/stack.mjs"
+  },
+  "dependencies": {
+    "flying-squid": "^1.12.0",
+    "mineflayer": "^4.39.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "mineflayer-tool": "^1.2.0",
+    "prismarine-chunk": "^1.41.0",
+    "prismarine-item": "^1.18.0",
+    "vec3": "^0.1.10"
+  }
+}

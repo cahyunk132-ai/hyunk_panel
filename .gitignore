@@ -32,3 +32,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ── mcbot (AI Minecraft bot) ─────────────────────────────────────────
+/mcbot/node_modules/
+/mcbot/.env
+/mcbot/logs/
+/mcbot/dev-server/world*/
