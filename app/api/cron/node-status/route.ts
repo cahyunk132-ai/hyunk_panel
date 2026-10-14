@@ -22,7 +22,7 @@ interface NodeCheckResult {
 /**
  * GET /api/cron/node-status — health check publik setiap jam.
  *
- * Vercel Cron harus mengirim Authorization: Bearer CRON_SECRET. Token Wings
+ * Scheduler eksternal harus mengirim Authorization: Bearer CRON_SECRET. Token Wings
  * hanya didekripsi inside WingsClient di server dan tidak pernah masuk response.
  */
 export async function GET(request: Request) {

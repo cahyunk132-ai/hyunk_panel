@@ -33,7 +33,8 @@ function mapWingsState(state: string | undefined): ServerStatus {
 
 /**
  * GET /api/cron/server-status — polling server state setiap lima menit.
- * A running → offline transition sends one crash email to that server owner.
+ * Dipanggil oleh scheduler eksternal; a running → offline transition sends one
+ * crash email to that server owner.
  */
 export async function GET(request: Request) {
   const unauthorized = requireCronSecret(request);

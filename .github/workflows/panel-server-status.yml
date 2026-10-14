@@ -1,0 +1,29 @@
+name: HYUNK Panel - server status
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: hyunk-panel-server-status
+  cancel-in-progress: false
+
+jobs:
+  check-server-status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      PANEL_URL: https://panel.wangstore.web.id
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Validate scheduler secret
+        run: test -n "$CRON_SECRET" || (echo "::error::GitHub Actions secret CRON_SECRET belum diatur" && exit 1)
+      - name: Run server status check
+        run: >-
+          curl --silent --show-error --fail --retry 3 --retry-delay 5
+          --max-time 300
+          -H "Authorization: Bearer ${CRON_SECRET}"
+          "${PANEL_URL}/api/cron/server-status"

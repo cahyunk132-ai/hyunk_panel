@@ -9,7 +9,7 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 /**
- * GET /api/cron/backup — handler Vercel Cron (lihat vercel.json).
+ * GET /api/cron/backup — handler scheduler eksternal (GitHub Actions/manual curl).
  *
  * - Validasi `Authorization: Bearer {CRON_SECRET}` (timing-safe compare).
  * - Ambil semua jadwal aktif yang sudah jatuh tempo (next_run_at <= now).
