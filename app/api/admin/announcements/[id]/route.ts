@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireAdmin } from '@/lib/auth/session';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { logActivity } from '@/lib/wings/resolve';
+import { deliverAnnouncementEmail } from '@/lib/announcement-email';
 import { isUuid } from '@/lib/utils/format';
 import {
   MAX_ANNOUNCEMENT_CONTENT,
@@ -12,8 +13,10 @@ import {
 import type { AnnouncementRow } from '@/types';
 
 export const runtime = 'nodejs';
+export const maxDuration = 300;
 
-const ADMIN_COLUMNS = 'id, title, content, type, is_active, created_by, created_at, expires_at';
+const ADMIN_COLUMNS =
+  'id, title, content, type, is_active, send_email, email_sent, created_by, created_at, expires_at';
 
 function clientIp(request: NextRequest): string | null {
   return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
@@ -28,7 +31,7 @@ function invalidId(id: string) {
  * (Owner Panel & Admin).
  *
  * Body boleh berisi sebagian field saja:
- *   { title?, content?, type?, is_active?, expires_at? }
+ *   { title?, content?, type?, is_active?, expires_at?, send_email? }
  * Kirim `expires_at: null` untuk menjadikan pengumuman permanen.
  */
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
@@ -44,13 +47,16 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     type?: unknown;
     is_active?: unknown;
     expires_at?: unknown;
+    send_email?: unknown;
   } | null;
 
   if (!body || typeof body !== 'object') {
     return Response.json({ error: 'Body tidak valid' }, { status: 400 });
   }
 
-  const patch: Partial<Pick<AnnouncementRow, 'title' | 'content' | 'type' | 'is_active' | 'expires_at'>> = {};
+  const patch: Partial<
+    Pick<AnnouncementRow, 'title' | 'content' | 'type' | 'is_active' | 'expires_at' | 'send_email'>
+  > = {};
 
   if (body.title !== undefined) {
     const title = typeof body.title === 'string' ? body.title.trim() : '';
@@ -93,6 +99,13 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     patch.is_active = body.is_active;
   }
 
+  if (body.send_email !== undefined) {
+    if (typeof body.send_email !== 'boolean') {
+      return Response.json({ error: 'send_email harus boolean' }, { status: 400 });
+    }
+    patch.send_email = body.send_email;
+  }
+
   // `expires_at: null` (permanen) dibedakan dari "field tidak dikirim".
   if ('expires_at' in body) {
     const expires = normalizeExpiresAt(body.expires_at);
@@ -131,9 +144,19 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     ip: clientIp(request),
   });
 
+  const delivery = await deliverAnnouncementEmail(row);
   return Response.json({
     ok: true,
-    announcement: row,
+    announcement: { ...row, email_sent: delivery.email_sent },
+    email_delivery: delivery.result
+      ? {
+          sent: delivery.result.sent,
+          failed: delivery.result.failed,
+          skipped: delivery.result.skipped,
+          cancelled: delivery.result.cancelled,
+          email_sent: delivery.email_sent,
+        }
+      : null,
     message:
       patch.is_active === undefined
         ? 'Pengumuman diperbarui'

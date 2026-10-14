@@ -23,6 +23,7 @@
     "jszip": "^3.10.2",
     "next": "^14.2.35",
     "next-themes": "^0.4.6",
+    "nodemailer": "^10.1.1",
     "nprogress": "^0.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -33,6 +34,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.16.10",
+    "@types/nodemailer": "^8.0.2",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",
     "@types/ssh2": "^1.15.6",

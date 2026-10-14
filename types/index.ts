@@ -384,6 +384,10 @@ export interface AnnouncementRow {
   content: string;
   type: AnnouncementType;
   is_active: boolean;
+  /** Kirim broadcast email saat announcement aktif dibuat/diaktifkan. */
+  send_email: boolean;
+  /** True hanya setelah semua recipient verified berhasil dikirimi email. */
+  email_sent: boolean;
   /** Admin yang membuat (null bila akunnya sudah dihapus). */
   created_by: string | null;
   created_at: string;
@@ -413,6 +417,58 @@ export interface AdminAnnouncementsResponse {
   announcements: AdminAnnouncementRow[];
   total: number;
   active: number;
+}
+
+// ─── Public status page ──────────────────────────────────────────────────────
+
+export type NodeStatus = 'online' | 'offline' | 'degraded';
+export type PublicStatusOverall = 'operational' | 'degraded' | 'major_outage';
+
+export interface PublicNodeStatus {
+  id: string;
+  name: string;
+  location: string | null;
+  status: NodeStatus;
+  latency_ms: number | null;
+  uptime_90d: number;
+  /** Oldest → newest daily status; null means no check existed that day. */
+  history: Array<NodeStatus | null>;
+}
+
+export interface PublicStatusResponse {
+  nodes: PublicNodeStatus[];
+  overall: PublicStatusOverall;
+  last_updated: string | null;
+}
+
+// ─── Email notifications ────────────────────────────────────────────────────
+
+export type NotificationType =
+  | 'backup_failed'
+  | 'backup_success'
+  | 'server_crash'
+  | 'node_offline'
+  | 'announcement'
+  | 'test';
+
+export interface NotificationSettingsRow {
+  id?: string;
+  user_id: string;
+  notify_backup_failed: boolean;
+  notify_backup_success: boolean;
+  notify_server_crash: boolean;
+  notify_node_offline: boolean;
+  email_override: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PublicNotificationSettings {
+  notify_backup_failed: boolean;
+  notify_backup_success: boolean;
+  notify_server_crash: boolean;
+  notify_node_offline: boolean;
+  email_override: string | null;
 }
 
 // ─── API payloads ────────────────────────────────────────────────────────────

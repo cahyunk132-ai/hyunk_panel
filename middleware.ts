@@ -8,8 +8,8 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
  *   /reset-password karena sesi recovery memang dipakai di halaman itu)
  * - /verify-email      → publik (halaman tunggu verifikasi + kirim ulang email)
  * - /auth/callback     → publik (landing link email Supabase: verifikasi & reset)
- * - /, /privacy, /tos  → publik (homepage dan legal pages, boleh diakses tanpa login)
- * - /api/announcements → publik (GET pengumuman aktif untuk banner; read-only)
+ * - /, /privacy, /tos, /status → publik (homepage, legal pages, dan status page)
+ * - /api/announcements, /api/status → publik (read-only data status/banner)
  * - /api/remote/*      → publik (Wings; auth pakai Bearer token node di handler)
  * - /api/auth/*        → publik (termasuk OAuth callback cloud storage)
  * - /api/cron/*        → publik (Vercel Cron; divalidasi via CRON_SECRET di handler)
@@ -25,13 +25,24 @@ const VERIFY_EMAIL_PAGE = '/verify-email';
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const host = request.headers.get('host')?.split(':')[0]?.toLowerCase();
+
+  // The custom status domain serves the same app but exposes the status page at
+  // its root, so visitors do not need to know the internal /status path.
+  if (host === 'status.wangstore.web.id' && pathname === '/') {
+    const url = request.nextUrl.clone();
+    url.pathname = '/status';
+    return NextResponse.rewrite(url);
+  }
 
   if (
     pathname === '/' ||
     pathname === '/privacy' ||
     pathname === '/tos' ||
+    pathname === '/status' ||
     pathname === '/auth/callback' ||
     pathname === '/api/announcements' ||
+    pathname === '/api/status' ||
     pathname.startsWith('/api/remote') ||
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/api/cron')

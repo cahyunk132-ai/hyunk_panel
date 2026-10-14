@@ -76,6 +76,8 @@ export class WingsClient {
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      // A health check must not hold the cron open forever when Wings is down.
+      signal: AbortSignal.timeout(15_000),
       // Wings v1 tidak punya cache; jangan biarkan fetch men-cache apapun.
       cache: 'no-store',
     });
@@ -94,6 +96,11 @@ export class WingsClient {
   }
 
   // ── System / Node ────────────────────────────────────────────────────────
+
+  /** GET /api/system — lightweight health check used by the public status cron. */
+  async ping(): Promise<void> {
+    await this.request('GET', '/api/system');
+  }
 
   /** GET /api/system?v=2 — info CPU/RAM/disk node. */
   async getSystemInformation(): Promise<WingsSystemInformationV2> {

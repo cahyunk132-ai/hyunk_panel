@@ -11,6 +11,7 @@ import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { resolveServerWings, logActivity } from '@/lib/wings/resolve';
 import { computeNextRunAt } from './schedule';
 import { buildBackupFileName, uploadToProvider, deleteFromProvider } from './index';
+import { sendNotification } from '@/lib/notifications';
 
 /**
  * Runner job auto backup — dipakai bersama oleh:
@@ -134,13 +135,23 @@ export async function runBackupJob(
   const fail = async (
     message: string,
     patch: Partial<BackupLogRow> = {},
-  ): Promise<BackupJobResult> =>
-    finish({
+  ): Promise<BackupJobResult> => {
+    const result = await finish({
       status: 'failed',
       error_message: message,
       completed_at: new Date().toISOString(),
       ...patch,
     });
+    if (serverRow.owner_id) {
+      await sendNotification(serverRow.owner_id, 'backup_failed', {
+        serverName: serverRow.name,
+        serverId: serverRow.id,
+        error: message,
+        time: new Date(),
+      });
+    }
+    return result;
+  };
 
   try {
     // 2. Update jadwal: last_run_at + next_run_at berikutnya.
@@ -241,6 +252,14 @@ export async function runBackupJob(
       storage_file_name: uploaded.fileName,
       backup_uuid: backupUuid,
     });
+
+    if (serverRow.owner_id) {
+      await sendNotification(serverRow.owner_id, 'backup_success', {
+        serverName: serverRow.name,
+        serverId: serverRow.id,
+        time: new Date(),
+      });
+    }
 
     // 7. Bersihkan backup di node — sudah tersalin aman ke cloud.
     try {

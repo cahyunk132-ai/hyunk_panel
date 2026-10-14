@@ -36,6 +36,7 @@ interface FormState {
   /** Nilai input datetime-local ('' = permanen). */
   expires_at: string;
   is_active: boolean;
+  send_email: boolean;
 }
 
 const emptyForm: FormState = {
@@ -44,6 +45,7 @@ const emptyForm: FormState = {
   type: 'info',
   expires_at: '',
   is_active: true,
+  send_email: true,
 };
 
 type StatusFilter = 'all' | 'live' | 'inactive' | 'expired';
@@ -106,6 +108,7 @@ export function AnnouncementsAdmin() {
       type: row.type,
       expires_at: toDateTimeLocalValue(row.expires_at),
       is_active: row.is_active,
+      send_email: row.send_email,
     });
     setFormError(null);
     setModalOpen(true);
@@ -131,6 +134,7 @@ export function AnnouncementsAdmin() {
         content,
         type: form.type,
         expires_at: form.expires_at ? form.expires_at : null,
+        send_email: form.send_email,
         ...(editing ? { is_active: form.is_active } : {}),
       };
       const res = await fetch(
@@ -280,6 +284,7 @@ export function AnnouncementsAdmin() {
                   <th className="px-5 py-3 font-medium">Judul</th>
                   <th className="px-5 py-3 font-medium">Tipe</th>
                   <th className="px-5 py-3 font-medium">Status</th>
+                  <th className="px-5 py-3 font-medium">Email</th>
                   <th className="px-5 py-3 font-medium">Dibuat</th>
                   <th className="px-5 py-3 font-medium">Kedaluwarsa</th>
                   <th className="px-5 py-3 text-right font-medium">Aksi</th>
@@ -308,6 +313,11 @@ export function AnnouncementsAdmin() {
                         {status === 'live' && <Badge tone="green">Tayang</Badge>}
                         {status === 'inactive' && <Badge tone="gray">Nonaktif</Badge>}
                         {status === 'expired' && <Badge tone="yellow">Kedaluwarsa</Badge>}
+                      </td>
+                      <td className="px-5 py-3">
+                        {!row.send_email && <Badge tone="gray">Tidak dikirim</Badge>}
+                        {row.send_email && row.email_sent && <Badge tone="green">Terkirim</Badge>}
+                        {row.send_email && !row.email_sent && <Badge tone="yellow">Menunggu</Badge>}
                       </td>
                       <td className="px-5 py-3">
                         <p className="text-xs text-ink-muted">{formatRelativeTime(row.created_at)}</p>
@@ -413,17 +423,33 @@ export function AnnouncementsAdmin() {
             <BannerPreview form={form} />
           </div>
 
-          {editing && (
-            <label className="flex items-center gap-2.5 text-sm text-ink-muted">
+          <div className="space-y-2 rounded-lg border border-line bg-base-900/50 px-3 py-2.5">
+            {editing && (
+              <label className="flex items-center gap-2.5 text-sm text-ink-muted">
+                <input
+                  type="checkbox"
+                  checked={form.is_active}
+                  onChange={(e) => setForm((prev) => ({ ...prev, is_active: e.target.checked }))}
+                  className="h-4 w-4 rounded border-line accent-accent"
+                />
+                Aktif (tampil sebagai banner di panel user)
+              </label>
+            )}
+            <label className="flex items-start gap-2.5 text-sm text-ink-muted">
               <input
                 type="checkbox"
-                checked={form.is_active}
-                onChange={(e) => setForm((prev) => ({ ...prev, is_active: e.target.checked }))}
-                className="h-4 w-4 rounded border-line accent-accent"
+                checked={form.send_email}
+                onChange={(e) => setForm((prev) => ({ ...prev, send_email: e.target.checked }))}
+                className="mt-0.5 h-4 w-4 rounded border-line accent-accent"
               />
-              Aktif (tampil sebagai banner di panel user)
+              <span>
+                <span className="block">Kirim notifikasi email</span>
+                <span className="mt-0.5 block text-[11px] text-ink-faint">
+                  Batch 10 email per detik ke semua user aktif yang sudah verifikasi email.
+                </span>
+              </span>
             </label>
-          )}
+          </div>
 
           {formError && (
             <div className="rounded-lg border border-red-500/25 bg-red-500/5 px-3 py-2 text-xs text-red-300">
