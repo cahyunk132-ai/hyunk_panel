@@ -41,8 +41,8 @@ Browser ──► /api/... (Next.js API route, serverless) ──► Wings API (
 ### 1. Supabase
 
 1. Buat project baru di [supabase.com](https://supabase.com).
-2. Buka **SQL Editor**, jalankan [`001_initial.sql`](supabase/migrations/001_initial.sql), [`002_role_management.sql`](supabase/migrations/002_role_management.sql), [`003_egg_system.sql`](supabase/migrations/003_egg_system.sql), [`004_auto_download.sql`](supabase/migrations/004_auto_download.sql), [`005_auto_backup.sql`](supabase/migrations/005_auto_backup.sql), [`006_server_subdomains.sql`](supabase/migrations/006_server_subdomains.sql), [`007_auto_server_users.sql`](supabase/migrations/007_auto_server_users.sql), dan [`008_count_user_subdomains.sql`](supabase/migrations/008_count_user_subdomains.sql), lalu [`009_drop_subdomain_quota.sql`](supabase/migrations/009_drop_subdomain_quota.sql), [`010_add_backup_schedule_permission.sql`](supabase/migrations/010_add_backup_schedule_permission.sql), dan [`011_announcements.sql`](supabase/migrations/011_announcements.sql), lalu [`012_vps_terminal.sql`](supabase/migrations/012_vps_terminal.sql) untuk fitur VPS Terminal.
-   Migration kedua menambahkan role hierarchy, subuser assignment, batas lima Owner Panel, dan policy RLS berbasis role. Migration ketiga menambahkan Egg, versi, assignment Egg ke node, serta referensi Egg/versi aktif pada server. Migration keempat menambahkan kolom auto-download pada versi Egg (provider, URL template custom, variabel, filename, flag executable). Migration kelima menambahkan **Auto Backup System**: tabel `storage_providers`, `backup_schedules`, dan `backup_logs` beserta RLS-nya. Migration keenam menambahkan **Subdomain Manager**: tabel `server_subdomains` (subdomain per server → IP:port via reverse proxy Wings) beserta RLS-nya. Migration ketujuh mengisi baris `server_users` yang hilang untuk server yang sudah ada plus trigger auto-assign owner. Migration kedelapan sempat menambahkan function `count_user_subdomains(uuid)` untuk kuota subdomain per user, dan migration kesembilan **menghapusnya** — sistem subdomain sekarang **satu subdomain aktif per server tanpa kuota per user**, jadi function kuota itu tidak dipakai lagi. Migration kesepuluh menambahkan permission `backup.schedule` pada assignment yang sudah ada. Migration kesebelas menambahkan **Announcement System**: tabel `announcements` (broadcast pengumuman admin → banner di panel user) beserta RLS-nya. Migration kedua belas menambahkan tabel `vps`/`vps_users` untuk **VPS Terminal**; credential VPS wajib disimpan terenkripsi dengan `STORAGE_TOKEN_ENCRYPTION_KEY` dan hanya endpoint token yang boleh membacanya.
+2. Buka **SQL Editor**, jalankan [`001_initial.sql`](supabase/migrations/001_initial.sql), [`002_role_management.sql`](supabase/migrations/002_role_management.sql), [`003_egg_system.sql`](supabase/migrations/003_egg_system.sql), [`004_auto_download.sql`](supabase/migrations/004_auto_download.sql), [`005_auto_backup.sql`](supabase/migrations/005_auto_backup.sql), [`006_server_subdomains.sql`](supabase/migrations/006_server_subdomains.sql), [`007_auto_server_users.sql`](supabase/migrations/007_auto_server_users.sql), dan [`008_count_user_subdomains.sql`](supabase/migrations/008_count_user_subdomains.sql), lalu [`009_drop_subdomain_quota.sql`](supabase/migrations/009_drop_subdomain_quota.sql), [`010_add_backup_schedule_permission.sql`](supabase/migrations/010_add_backup_schedule_permission.sql), dan [`011_announcements.sql`](supabase/migrations/011_announcements.sql), lalu [`012_vps_terminal.sql`](supabase/migrations/012_vps_terminal.sql), dan [`013_status_notifications.sql`](supabase/migrations/013_status_notifications.sql) untuk public status page serta notifikasi email.
+   Migration kedua menambahkan role hierarchy, subuser assignment, batas lima Owner Panel, dan policy RLS berbasis role. Migration ketiga menambahkan Egg, versi, assignment Egg ke node, serta referensi Egg/versi aktif pada server. Migration keempat menambahkan kolom auto-download pada versi Egg (provider, URL template custom, variabel, filename, flag executable). Migration kelima menambahkan **Auto Backup System**: tabel `storage_providers`, `backup_schedules`, dan `backup_logs` beserta RLS-nya. Migration keenam menambahkan **Subdomain Manager**: tabel `server_subdomains` (subdomain per server → IP:port via reverse proxy Wings) beserta RLS-nya. Migration ketujuh mengisi baris `server_users` yang hilang untuk server yang sudah ada plus trigger auto-assign owner. Migration kedelapan sempat menambahkan function `count_user_subdomains(uuid)` untuk kuota subdomain per user, dan migration kesembilan **menghapusnya** — sistem subdomain sekarang **satu subdomain aktif per server tanpa kuota per user**, jadi function kuota itu tidak dipakai lagi. Migration kesepuluh menambahkan permission `backup.schedule` pada assignment yang sudah ada. Migration kesebelas menambahkan **Announcement System**: tabel `announcements` (broadcast pengumuman admin → banner di panel user) beserta RLS-nya. Migration kedua belas menambahkan tabel `vps`/`vps_users` untuk **VPS Terminal**; credential VPS wajib disimpan terenkripsi dengan `STORAGE_TOKEN_ENCRYPTION_KEY` dan hanya endpoint token yang boleh membacanya. Migration ketiga belas menambahkan `node_status_logs`, `notification_settings`, `notification_logs`, serta kolom delivery email pada `announcements`.
 3. Buat user pertama: **Authentication → Users → Add user** (email + password). Centang **Auto Confirm User** — sejak fitur [Email Verification](#email-verification--reset-password) aktif, akun dengan email belum terverifikasi hanya bisa membuka `/verify-email` dan tidak bisa memakai panel.
 4. Atur **Authentication → URL Configuration**: isi **Site URL** dengan `NEXT_PUBLIC_APP_URL` (mis. `https://panel.wangstore.web.id`) dan tambahkan `https://panel.wangstore.web.id/auth/callback` ke **Redirect URLs** supaya link verifikasi email & reset password kembali ke panel. Pastikan **Authentication → Providers → Email → Confirm email** aktif bila ingin pendaftaran baru wajib verifikasi, dan isi **SMTP** (Auth → SMTP) agar email benar-benar terkirim.
 5. Jadikan Owner Panel pertama — di SQL Editor:
@@ -70,6 +70,10 @@ Salin `.env.local.example` → `.env.local` (lokal) atau isi di **Vercel → Set
 | `ONEDRIVE_CLIENT_ID` / `ONEDRIVE_CLIENT_SECRET` | OneDrive — **coming soon** (UI sudah ada, tombol disabled) |
 | `STORAGE_TOKEN_ENCRYPTION_KEY` | enkripsi kredensial cloud storage (AES-256-GCM), `openssl rand -hex 32` |
 | `CRON_SECRET` | secret Vercel Cron (`Authorization: Bearer`), `openssl rand -hex 32` |
+| `SMTP_HOST` / `SMTP_PORT` | host dan port SMTP untuk notifikasi email otomatis |
+| `SMTP_SECURE` | `true` untuk TLS langsung (umumnya port 465), `false` untuk STARTTLS (umumnya 587) |
+| `SMTP_USER` / `SMTP_PASSWORD` | kredensial SMTP server (**rahasia — hanya server**) |
+| `SMTP_FROM` | alamat pengirim email notifikasi |
 
 > `WINGS_SEED_NODE_TOKEN` hanya dibaca sekali oleh endpoint seed (dienkripsi lalu disimpan).
 > Setelah seed sukses, boleh dikosongkan/dihapus dari env.
@@ -449,7 +453,8 @@ Semua aliran email auth memakai Supabase Auth (panel tidak mengirim email sendir
 ### Route publik
 
 `middleware.ts` memperlakukan path berikut sebagai publik: `/login`, `/register`, `/verify-email`,
-`/forgot-password`, `/reset-password`, `/auth/callback`, dan `GET /api/announcements`. User yang
+`/forgot-password`, `/reset-password`, `/auth/callback`, `/status`, `GET /api/status`, dan
+`GET /api/announcements`. User yang
 sudah login **dan** terverifikasi di-redirect dari halaman auth itu ke `/dashboard` (pengecualian:
 `/reset-password`, karena sesi recovery memang dipakai di sana).
 
@@ -469,6 +474,46 @@ sudah login **dan** terverifikasi di-redirect dari halaman auth itu ke `/dashboa
 > (langsung terverifikasi), jadi user hasil invite admin tidak terblokir guard `/verify-email`.
 > Notifikasi kecil (toast) memakai `lib/utils/toast.ts` + `<Toaster />` di `app/layout.tsx`.
 
+## Public Status Page
+
+Halaman status publik tersedia di `/status` dan dapat dipasang pada domain
+`https://status.wangstore.web.id`. Halaman ini tidak membutuhkan login, menampilkan status
+semua node Wings, latency, uptime 90 hari, serta 90 kotak riwayat harian. Data dikumpulkan oleh
+Vercel Cron setiap jam melalui `GET /api/system` Wings dan disimpan di `node_status_logs` selama
+maksimal 90 hari.
+
+| Endpoint | Auth | Fungsi |
+|---|---|---|
+| `GET /api/status` | publik | node, status terkini, latency, uptime 90 hari, history harian, overall, dan last updated |
+| `GET /api/cron/node-status` | `CRON_SECRET` | health check node per jam, simpan log, cleanup >90 hari, trigger node offline |
+| `GET /api/cron/server-status` | `CRON_SECRET` | polling server Wings tiap 5 menit dan trigger server crash |
+
+`online` berarti Wings merespons di bawah 1 detik, `degraded` berarti latency minimal 1 detik
+atau node sedang maintenance, dan `offline` berarti request Wings gagal. Tambahkan domain custom
+`status.wangstore.web.id` di Vercel Project Settings → Domains, lalu buat DNS Cloudflare:
+`CNAME status cname.vercel-dns.com` (proxy DNS dapat tetap aktif jika konfigurasi Vercel
+menerimanya). Middleware otomatis me-rewrite root domain status ke route `/status`; deploy route
+`/status` dari project yang sama.
+
+## Email Notifications
+
+Migration: [`013_status_notifications.sql`](supabase/migrations/013_status_notifications.sql).
+`lib/notifications.ts` merender template dan mengirim email melalui SMTP server-side dengan
+Nodemailer. Credential SMTP tidak pernah dikirim ke browser dan setiap delivery dicatat di
+tabel `notification_logs`.
+
+Pengguna mengatur toggle **Backup gagal**, **Backup berhasil**, **Server crash**, **Node offline**,
+email alternatif, dan tombol **Test — kirim email** di `/settings/notifications`. Pengaturan
+memiliki default: backup gagal, server crash, dan node offline aktif; backup berhasil nonaktif.
+
+- Backup failed/success dipicu dari `lib/storage/backupJob.ts`.
+- Server crash dipicu ketika polling 5 menit melihat transisi `running → offline`.
+- Node offline dipicu ketika polling node melihat transisi `online → offline` dan dikirim ke semua
+  Owner Panel/Admin yang sudah memverifikasi email.
+- Announcement aktif dengan toggle email akan dikirim ke semua user aktif yang sudah memverifikasi
+  email, dalam batch 10 email per detik. `announcements.email_sent` baru menjadi `true` setelah
+  semua email berhasil; menonaktifkan announcement menghentikan batch berikutnya.
+
 ## Announcement System
 
 Admin (Owner Panel & Admin) broadcast pengumuman ke semua user panel.
@@ -477,8 +522,9 @@ Migration: [`011_announcements.sql`](supabase/migrations/011_announcements.sql).
 ### Skema
 
 Tabel `announcements`: `id`, `title`, `content`, `type` (`info` \| `warning` \| `danger` \|
-`success`), `is_active`, `created_by` (→ `users.id`, `ON DELETE SET NULL`), `created_at`,
-`expires_at` (`null` = permanen sampai dinonaktifkan).
+`success`), `is_active`, `send_email`, `email_sent`, `created_by` (→ `users.id`, `ON DELETE SET NULL`),
+`created_at`, `expires_at` (`null` = permanen sampai dinonaktifkan). `send_email` mengontrol
+broadcast email; `email_sent` hanya true setelah seluruh recipient verified berhasil menerima email.
 
 "Sedang tayang" = `is_active = true` **dan** (`expires_at IS NULL` **atau** `expires_at > now()`).
 Aturan itu satu tempat di `lib/announcements.ts` (`isAnnouncementExpired`,
@@ -491,7 +537,8 @@ Tabel semua pengumuman (judul + preview konten, tipe, status **Tayang/Nonaktif/K
 tanggal dibuat + pembuat, tanggal kedaluwarsa) dengan pencarian dan filter status, plus tombol
 **+ Buat pengumuman**, **Edit**, **Aktifkan/Nonaktifkan**, dan **Hapus**. Form buat/edit berisi
 judul, konten (textarea), tipe, dan tanggal kedaluwarsa opsional (`datetime-local`), dilengkapi
-preview banner sesuai warna tipenya.
+preview banner sesuai warna tipenya, serta toggle **Kirim notifikasi email** (default aktif).
+Tabel admin menampilkan status pengiriman email.
 
 ### Banner di panel user
 
@@ -511,8 +558,8 @@ path yang terdaftar pada `ANNOUNCEMENT_BANNER_PATHS` (default: `/dashboard`, `/s
 |---|---|---|
 | `GET /api/announcements` | publik | semua pengumuman yang sedang tayang (maks 20, hanya kolom aman) |
 | `GET /api/admin/announcements` | Owner Panel & Admin | semua pengumuman + username pembuat + jumlah yang tayang |
-| `POST /api/admin/announcements` | Owner Panel & Admin | buat pengumuman `{ title, content, type?, expires_at? }` |
-| `PATCH /api/admin/announcements/[id]` | Owner Panel & Admin | edit sebagian field, toggle `is_active`, `expires_at: null` = permanen |
+| `POST /api/admin/announcements` | Owner Panel & Admin | buat pengumuman `{ title, content, type?, expires_at?, send_email? }`; default `send_email: true` |
+| `PATCH /api/admin/announcements/[id]` | Owner Panel & Admin | edit sebagian field, toggle `is_active`/`send_email`, `expires_at: null` = permanen |
 | `DELETE /api/admin/announcements/[id]` | Owner Panel & Admin | hapus pengumuman |
 
 Semua aksi admin dicatat di audit log (`/activity`) sebagai `admin:announcement-create`,
@@ -555,6 +602,7 @@ app/            → halaman (App Router) + API routes (panel + remote)
 components/     → UI, layout, console (websocket), console/file manager server, power, backup, users,
                   terminal/ (xterm.js VPS terminal), vps/ (VPS cards, monitoring, SFTP file manager),
                   announcements/ (banner pengumuman), admin/ (AnnouncementsAdmin, SubdomainsAdmin),
+                  notifications/ (email settings), status/ (public status page),
                   theme/ (ThemeProvider, AppearanceControls, drawer appearance), ui/Toaster (toast global)
 hooks/          → useWingsConsole (websocket), useServerStatus (polling)
 lib/
@@ -564,6 +612,8 @@ lib/
   supabase/     → client browser/server/service
   auth/         → session.ts, rbac.ts (checkPermission)
   announcements.ts → aturan pengumuman (tipe, validasi, kedaluwarsa) — dipakai API & banner
+  notifications.ts / announcement-email.ts → SMTP template, preference guard, delivery log, broadcast batch
+  cron.ts → validasi CRON_SECRET untuk semua cron
   appearance/   → config.ts (palet & default), apply.ts (CSS variables), init-script.ts (anti-flash),
                   storage.ts, image.ts (kompres foto custom)
   storage/      → auto backup: crypto.ts (enkripsi kredensial), schedule.ts (next_run_at),
@@ -585,11 +635,13 @@ supabase/migrations/009_drop_subdomain_quota.sql
 supabase/migrations/010_add_backup_schedule_permission.sql
 supabase/migrations/011_announcements.sql
 supabase/migrations/012_vps_terminal.sql
+supabase/migrations/013_status_notifications.sql
 ```
 
 ## Catatan operasional
 
-- **Timeout Vercel**: request API route harus < 60 s (Pro). Semua panggilan wings di repo ini
+- **Timeout Vercel**: cron server-status/node-status dan announcement email memakai `maxDuration: 300`;
+  pastikan plan Vercel mendukung durasi tersebut. Semua panggilan wings di repo ini
   cepat; backup berjalan async di node dan statusnya dilaporkan wings via remote API. Endpoint
   `download-server-file` me-stream file langsung ke Wings (memory aman), tetapi file yang sangat
   besar di koneksi lambat bisa melebihi 60 detik di Hobby plan — gunakan upload manual via File

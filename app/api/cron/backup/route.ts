@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
-import crypto from 'node:crypto';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
+import { requireCronSecret } from '@/lib/cron';
 import { runBackupJob } from '@/lib/storage/backupJob';
 import type { BackupScheduleRow } from '@/types';
 
@@ -16,18 +16,8 @@ export const maxDuration = 300;
  * - Jalankan satu per satu; jadwal diproses paralel bisa menyusul via cron berikutnya.
  */
 export async function GET(request: NextRequest) {
-  const secret = process.env.CRON_SECRET ?? '';
-  if (!secret) {
-    return Response.json({ error: 'CRON_SECRET belum di-set di environment' }, { status: 500 });
-  }
-
-  const header = request.headers.get('authorization') ?? '';
-  const provided = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : '';
-  const a = Buffer.from(provided);
-  const b = Buffer.from(secret);
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const unauthorized = requireCronSecret(request);
+  if (unauthorized) return unauthorized;
 
   const service = getSupabaseServiceClient();
   const { data: schedules, error } = await service
