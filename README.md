@@ -86,9 +86,9 @@ Set domain `panel.wangstore.web.id` ke project Vercel.
 
 ### VPS Terminal eksternal
 
-Setelah menjalankan [`012_vps_terminal.sql`](supabase/migrations/012_vps_terminal.sql), isi tabel `public.vps` melalui provisioning server-side. Field `credential` harus merupakan hasil `encryptSecret(...)` dari `lib/storage/crypto.ts`, bukan password plaintext. Tambahkan user pada `public.vps_users` bila VPS dibagikan.
+Setelah menjalankan [`012_vps_terminal.sql`](supabase/migrations/012_vps_terminal.sql), user dapat menambahkan VPS sendiri dari halaman `/vps` melalui tombol **+ Tambah VPS**. Form mengirim credential melalui HTTPS ke API panel; API langsung mengenkripsinya memakai `encryptSecret(...)` dari `lib/storage/crypto.ts` sebelum disimpan. Credential plaintext tidak disimpan atau dikembalikan ke browser.
 
-Halaman `/vps` hanya mengambil metadata yang aman. Saat user membuka `/vps/{id}/terminal`, `GET /api/vps/{id}/terminal-token` memeriksa owner/assignment, mendekripsi credential di server, lalu menerbitkan JWT HS256 35 menit untuk `TERMINAL_SERVICE_URL`. Browser tidak pernah menerima credential terpisah.
+Pemilik VPS dapat melihat, mengedit, dan menghapus VPS miliknya. Owner Panel/Admin dapat mengelola semua VPS; VPS yang dibagikan hanya tampil read-only bagi user penerima. Saat user membuka `/vps/{id}/terminal`, `GET /api/vps/{id}/terminal-token` memeriksa owner/assignment, mendekripsi credential di server, lalu menerbitkan JWT HS256 35 menit untuk `TERMINAL_SERVICE_URL`.
 
 ### 4. Seed data existing (Fase 0)
 
@@ -150,8 +150,11 @@ membuat allocation otomatis, berguna untuk impor/seed.
 
 | Endpoint | Fungsi |
 |---|---|
+| `GET /api/vps` | Daftar VPS yang dimiliki/di-assign ke user, tanpa credential |
+| `POST /api/vps` | User login menambahkan VPS miliknya; credential langsung dienkripsi server-side |
+| `GET/PATCH/DELETE /api/vps/{id}` | Baca metadata, ubah, atau hapus VPS; hanya owner atau Owner Panel/Admin |
 | `GET /api/vps/{id}/terminal-token` | User yang punya akses menerima `{ token, wsUrl }`; credential didekripsi server-side dan tidak dikembalikan sebagai field terpisah |
-| `GET /vps` | Daftar VPS yang dimiliki/di-assign ke user |
+| `GET /vps` | GUI daftar dan tambah/edit/hapus VPS |
 | `GET /vps/{id}/terminal` | Terminal xterm.js via `wss://terminal.wangstore.web.id?token=...` |
 
 Terminal service menggunakan pesan JSON `{ type: "data", data: "<base64>" }`, `{ type: "resize", cols, rows }`, serta status/error seperti yang didukung UI.

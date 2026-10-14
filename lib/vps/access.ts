@@ -3,6 +3,9 @@ import 'server-only';
 import type { SessionUser } from '@/lib/auth/session';
 import { isPanelAdmin } from '@/lib/auth/roles';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
+import type { VpsListItem } from '@/types';
+
+export type { VpsListItem } from '@/types';
 
 export interface VpsRecord {
   id: string;
@@ -16,19 +19,21 @@ export interface VpsRecord {
   created_at?: string;
 }
 
-export interface VpsListItem {
-  id: string;
-  name: string;
-  host: string;
-  port: number;
-  username: string;
-  owner_id: string | null;
-  created_at?: string;
-}
-
 /** Global staff roles follow the same visibility rule as the existing server list. */
 function canSeeAllVps(user: SessionUser): boolean {
   return isPanelAdmin(user.role) || user.role === 'moderator';
+}
+
+export function toVpsListItem(vps: VpsRecord): VpsListItem {
+  return {
+    id: vps.id,
+    name: vps.name,
+    host: vps.host,
+    port: vps.port,
+    username: vps.username,
+    owner_id: vps.owner_id,
+    created_at: vps.created_at,
+  };
 }
 
 /**
