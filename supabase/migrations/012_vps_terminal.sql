@@ -77,5 +77,6 @@ create policy vps_users_accessible_select on public.vps_users
     or public.can_access_vps(vps_id)
   );
 
--- Inserts/updates/deletes are intentionally handled by an admin API or the
--- service role. No browser client receives a credential-bearing row.
+-- Inserts/updates/deletes are intentionally handled by authenticated panel
+-- APIs using the service role. No browser client receives a credential-bearing
+-- row, and owner_id is always taken from the server-side session.

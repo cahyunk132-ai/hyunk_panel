@@ -77,6 +77,16 @@ export interface NodeAllocationStats {
   assigned: number;
 }
 
+export interface VpsListItem {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  owner_id: string | null;
+  created_at?: string;
+}
+
 export interface ServerRow {
   id: string;
   uuid: string;
