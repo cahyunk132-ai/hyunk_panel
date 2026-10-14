@@ -32,7 +32,8 @@ function mapWingsState(state: string | undefined): ServerStatus {
 }
 
 /**
- * GET /api/cron/server-status — polling server state setiap lima menit.
+ * GET /api/cron/server-status — fallback polling server state.
+ * Endpoint tetap tersedia untuk pemanggilan manual atau scheduler eksternal.
  * A running → offline transition sends one crash email to that server owner.
  */
 export async function GET(request: Request) {

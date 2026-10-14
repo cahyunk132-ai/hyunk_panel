@@ -302,7 +302,7 @@ Dropdown permission & checkbox Ignore Player Limit di tabel auto-save (PUT) seti
   dan tab **Activity** per server. Semua aksi penting dicatat (power, file edit, admin ops,
   event dari wings) lengkap dengan IP.
 - **Auto Backup + Cloud Storage** — jadwal backup per server (hourly/daily/weekly) yang
-  dieksekusi Vercel Cron: Wings membuat backup di node → panel men-download secara streaming →
+  dieksekusi Vercel Cron harian: Wings membuat backup di node → panel men-download secara streaming →
   upload ke cloud storage user (Google Drive, Dropbox, S3-compatible, SFTP, WebDAV) → retention
   otomatis. Lihat [Auto Backup System](#auto-backup-system-cloud-storage).
 
@@ -315,7 +315,7 @@ Fitur backup otomatis terjadwal yang mengirim backup server ke **cloud storage m
 ```
 Admin/Moderator set jadwal backup per server (tab Backups → Auto Backup Schedule)
         ↓
-Vercel Cron (hourly, lihat vercel.json) → GET /api/cron/backup (Bearer CRON_SECRET)
+Vercel Cron (03:00 UTC, lihat vercel.json) → GET /api/cron/backup (Bearer CRON_SECRET)
         ↓
 Wings membuat file backup di node (adapter "wings")
         ↓
@@ -347,11 +347,12 @@ Retention: backup cloud terlama dihapus otomatis bila melebihi limit
      `{NEXT_PUBLIC_APP_URL}/api/auth/storage/callback/dropbox`
    - `ONEDRIVE_CLIENT_ID` / `ONEDRIVE_CLIENT_SECRET` — placeholder; fitur OneDrive **coming soon**
      (tombol di UI sudah ada tapi disabled sampai kredensial tersedia).
-3. **Vercel Cron** — sudah terdaftar di [`vercel.json`](vercel.json):
-   `GET /api/cron/backup` setiap jam (`0 * * * *`). **Catatan:** Vercel Cron dengan interval
-   **< 1 hari butuh Vercel Pro**; jadwal hourly seperti ini jalan di semua plan, tetapi
-   proses backup (download + upload file besar) bisa melebihi limit durasi function Hobby —
-   gunakan **Vercel Pro** (`maxDuration = 300` sudah di-set di route terkait).
+3. **Vercel Cron** — Hobby hanya mendaftarkan satu job harian di [`vercel.json`](vercel.json):
+   `GET /api/cron/backup` pukul 03:00 UTC (`0 3 * * *`). Endpoint node-status dan
+   server-status tetap tersedia untuk pemanggilan manual, tetapi tidak didaftarkan sebagai Cron.
+   Status di halaman Nodes diperbarui dengan polling browser 60 detik; status di daftar Servers
+   diperbarui dengan polling browser 30 detik. Proses backup (download + upload file besar) bisa
+   melebihi limit durasi function Hobby — `maxDuration = 300` sudah di-set di route terkait.
 
 ### Pemakaian
 
@@ -480,14 +481,19 @@ sudah login **dan** terverifikasi di-redirect dari halaman auth itu ke `/dashboa
 Halaman status publik tersedia di `/status` dan dapat dipasang pada domain
 `https://status.wangstore.web.id`. Halaman ini tidak membutuhkan login, menampilkan status
 semua node Wings, latency, uptime 90 hari, serta 90 kotak riwayat harian. Data dikumpulkan oleh
-Vercel Cron setiap jam melalui `GET /api/system` Wings dan disimpan di `node_status_logs` selama
-maksimal 90 hari.
+Halaman status publik membaca `node_status_logs`; pada Hobby log ini dapat diperbarui dengan
+**tombol Refresh semua status** di halaman Nodes atau pemanggilan endpoint manual.
+Status pada halaman Nodes diperbarui langsung dari browser melalui `/api/nodes/{id}/resources`
+setiap 60 detik selama halaman terbuka. Daftar Servers menggunakan `/api/servers/{id}/resources`
+setiap 30 detik; halaman detail tetap memakai WebSocket Wings untuk monitoring realtime. Endpoint
+Cron lama tetap tersedia untuk pemanggilan manual/kompatibilitas, tetapi hanya backup yang
+terdaftar di Vercel Hobby Cron.
 
 | Endpoint | Auth | Fungsi |
 |---|---|---|
 | `GET /api/status` | publik | node, status terkini, latency, uptime 90 hari, history harian, overall, dan last updated |
-| `GET /api/cron/node-status` | `CRON_SECRET` | health check node per jam, simpan log, cleanup >90 hari, trigger node offline |
-| `GET /api/cron/server-status` | `CRON_SECRET` | polling server Wings tiap 5 menit dan trigger server crash |
+| `GET/POST /api/cron/node-status` | `CRON_SECRET`; POST manual memakai session Admin | health check node, simpan log, cleanup >90 hari, trigger node offline |
+| `GET /api/cron/server-status` | `CRON_SECRET` | fallback polling server Wings dan trigger server crash |
 
 `online` berarti Wings merespons di bawah 1 detik, `degraded` berarti latency minimal 1 detik
 atau node sedang maintenance, dan `offline` berarti request Wings gagal. Tambahkan domain custom

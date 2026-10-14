@@ -1,6 +1,9 @@
+'use client';
+
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { StatusBadge } from './StatusBadge';
+import { useServerStatus } from '@/hooks/useServerStatus';
 import type { ServerStatus } from '@/types';
 
 export interface ServerCardData {
@@ -20,9 +23,16 @@ function first<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : v;
 }
 
+/**
+ * Kartu server pada list/dashboard. Status awal berasal dari DB lalu disegarkan
+ * langsung dari Wings melalui REST setiap 30 detik selama tab terlihat.
+ */
 export function ServerCard({ server }: { server: ServerCardData }) {
   const node = first(server.nodes);
   const alloc = first(server.allocations);
+  const { data: live, error } = useServerStatus(server.id, 30_000);
+  const status = error ? 'offline' : live?.state ?? server.status;
+  const isSuspended = server.is_suspended || live?.is_suspended;
 
   return (
     <Link href={`/servers/${server.id}`}>
@@ -34,10 +44,10 @@ export function ServerCard({ server }: { server: ServerCardData }) {
             </h3>
             <p className="mt-0.5 truncate font-mono text-[11px] text-ink-faint">{server.uuid}</p>
           </div>
-          <StatusBadge status={server.is_suspended ? 'error' : server.status} />
+          <StatusBadge status={isSuspended ? 'error' : status} />
         </div>
 
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-2 text-[11px]">
+        <div className="mt-4 grid grid-cols-1 gap-2 text-[11px] md:grid-cols-3">
           <div>
             <p className="text-ink-faint">RAM</p>
             <p className="mt-0.5 font-medium text-ink">{(server.memory_mb / 1024).toFixed(1)} GB</p>
@@ -57,9 +67,7 @@ export function ServerCard({ server }: { server: ServerCardData }) {
             {node.name} · {node.fqdn}
           </p>
         )}
-        {server.is_suspended && (
-          <p className="mt-2 text-[11px] font-medium text-red-400">⚠ Server disuspend</p>
-        )}
+        {isSuspended && <p className="mt-2 text-[11px] font-medium text-red-400">⚠ Server disuspend</p>}
       </Card>
     </Link>
   );
