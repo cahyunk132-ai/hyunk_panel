@@ -90,6 +90,8 @@ Setelah menjalankan [`012_vps_terminal.sql`](supabase/migrations/012_vps_termina
 
 Pemilik VPS dapat melihat, mengedit, dan menghapus VPS miliknya. Owner Panel/Admin dapat mengelola semua VPS; VPS yang dibagikan hanya tampil read-only bagi user penerima. Saat user membuka `/vps/{id}/terminal`, `GET /api/vps/{id}/terminal-token` memeriksa owner/assignment, mendekripsi credential di server, lalu menerbitkan JWT HS256 35 menit untuk `TERMINAL_SERVICE_URL`.
 
+Card VPS juga mengambil CPU, RAM, dan Disk melalui SSH setiap 10 detik. Halaman `/vps/{id}/files` menyediakan browse, editor Monaco, upload, download, rename, pembuatan file/folder, dan hapus melalui SFTP. Operasi tulis file hanya tersedia bagi owner VPS atau Owner Panel/Admin; user yang menerima assignment melihat mode read-only.
+
 ### 4. Seed data existing (Fase 0)
 
 Setelah login sebagai admin:
@@ -154,8 +156,18 @@ membuat allocation otomatis, berguna untuk impor/seed.
 | `POST /api/vps` | User login menambahkan VPS miliknya; credential langsung dienkripsi server-side |
 | `GET/PATCH/DELETE /api/vps/{id}` | Baca metadata, ubah, atau hapus VPS; hanya owner atau Owner Panel/Admin |
 | `GET /api/vps/{id}/terminal-token` | User yang punya akses menerima `{ token, wsUrl }`; credential didekripsi server-side dan tidak dikembalikan sebagai field terpisah |
-| `GET /vps` | GUI daftar dan tambah/edit/hapus VPS |
+| `GET /api/vps/{id}/stats` | CPU, RAM, dan Disk VPS; cache process-local 10 detik |
+| `GET /api/vps/{id}/files?path=/` | List direktori melalui SFTP |
+| `GET /api/vps/{id}/files/read?path=...` | Baca isi file untuk editor |
+| `POST /api/vps/{id}/files/write` | Tulis isi file (owner/admin) |
+| `POST /api/vps/{id}/files/mkdir` | Buat folder (owner/admin) |
+| `POST /api/vps/{id}/files/rename` | Rename file/folder (owner/admin) |
+| `POST /api/vps/{id}/files/upload` | Upload multipart file (maks. 10 MB, owner/admin) |
+| `GET /api/vps/{id}/files/download?path=...` | Download file (maks. 25 MB) |
+| `DELETE /api/vps/{id}/files?path=...` | Hapus file/folder (owner/admin) |
+| `GET /vps` | GUI daftar, monitoring, dan tambah/edit/hapus VPS |
 | `GET /vps/{id}/terminal` | Terminal xterm.js via `wss://terminal.wangstore.web.id?token=...` |
+| `GET /vps/{id}/files` | File Manager VPS dengan editor Monaco |
 
 Terminal service menggunakan pesan JSON `{ type: "data", data: "<base64>" }`, `{ type: "resize", cols, rows }`, serta status/error seperti yang didukung UI.
 
@@ -540,8 +552,8 @@ Kustomisasi tampilan ada di **Appearance** (sidebar) atau lewat tombol 🎨 di t
 app/            → halaman (App Router) + API routes (panel + remote)
   (auth)/       → login, register, verify-email, forgot-password, reset-password
   auth/callback → landing link email Supabase (verifikasi signup & reset password)
-components/     → UI, layout, console (websocket), file manager, power, backup, users,
-                  terminal/ (xterm.js VPS terminal), vps/ (VPS cards),
+components/     → UI, layout, console (websocket), console/file manager server, power, backup, users,
+                  terminal/ (xterm.js VPS terminal), vps/ (VPS cards, monitoring, SFTP file manager),
                   announcements/ (banner pengumuman), admin/ (AnnouncementsAdmin, SubdomainsAdmin),
                   theme/ (ThemeProvider, AppearanceControls, drawer appearance), ui/Toaster (toast global)
 hooks/          → useWingsConsole (websocket), useServerStatus (polling)
@@ -558,7 +570,8 @@ lib/
                   tokens.ts (refresh OAuth), gdrive/dropbox/s3/sftp/webdav.ts (upload
                   streaming), backupJob.ts (pipeline cron/manual/admin)
   terminal/     → jwt.ts (JWT HS256 35 menit untuk terminal service eksternal)
-  vps/          → access.ts (owner/assignment guard sebelum decrypt credential)
+  vps/          → access.ts/http.ts (owner/assignment guard), ssh.ts (SSH/SFTP),
+                  stats.ts (monitoring + cache 10 detik), validation.ts
   utils/        → format.ts, constants.ts, toast.ts (toast store), app-url.ts (emailRedirectTo auth)
 supabase/migrations/001_initial.sql
 supabase/migrations/002_role_management.sql

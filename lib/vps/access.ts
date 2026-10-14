@@ -36,6 +36,10 @@ export function toVpsListItem(vps: VpsRecord): VpsListItem {
   };
 }
 
+export function canManageVps(user: SessionUser, vps: VpsRecord): boolean {
+  return isPanelAdmin(user.role) || vps.owner_id === user.id;
+}
+
 /**
  * Resolve one VPS and enforce access before a route can decrypt its credential.
  * The service-role client is used only after the panel session is available;

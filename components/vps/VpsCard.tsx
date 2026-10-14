@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import type { VpsListItem } from '@/types';
+import { VpsStats } from './VpsStats';
 
 export function VpsCard({
   vps,
@@ -42,7 +43,9 @@ export function VpsCard({
         </div>
       </div>
 
-      <div className="mt-5 flex gap-2">
+      <VpsStats vpsId={vps.id} />
+
+      <div className="mt-5 flex flex-wrap gap-2">
         <Link
           href={`/vps/${vps.id}/terminal`}
           className="inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-on-accent transition-colors hover:bg-accent-dim"
@@ -51,6 +54,13 @@ export function VpsCard({
             <path d="m5 7 5 5-5 5M13 17h6" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           Terminal
+        </Link>
+        <Link
+          href={`/vps/${vps.id}/files`}
+          className="inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border border-line bg-base-700 px-3 py-2 text-xs font-semibold text-ink-muted transition-colors hover:border-accent/40 hover:text-accent"
+        >
+          <span aria-hidden="true">📁</span>
+          Files
         </Link>
         {canManage && (
           <>
