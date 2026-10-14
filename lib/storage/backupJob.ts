@@ -15,7 +15,7 @@ import { sendNotification } from '@/lib/notifications';
 
 /**
  * Runner job auto backup — dipakai bersama oleh:
- *   - External scheduler / GitHub Actions (GET /api/cron/backup)
+ *   - Vercel Cron   (GET /api/cron/backup)
  *   - Manual        (POST /api/servers/{id}/backup-now)
  *   - Admin         (POST /api/admin/backups/run)
  *

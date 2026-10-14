@@ -2,8 +2,8 @@ import 'server-only';
 import crypto from 'node:crypto';
 
 /**
- * Validate requests from the external scheduler using CRON_SECRET. Returning
- * a Response keeps route handlers small and
+ * Validate Vercel Cron requests using the same CRON_SECRET used by the
+ * existing backup cron. Returning a Response keeps route handlers small and
  * ensures missing configuration is never treated as an authorized request.
  */
 export function requireCronSecret(request: Request): Response | null {

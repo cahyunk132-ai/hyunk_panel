@@ -69,7 +69,7 @@ Salin `.env.local.example` → `.env.local` (lokal) atau isi di **Vercel → Set
 | `DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` | OAuth Dropbox (auto backup) |
 | `ONEDRIVE_CLIENT_ID` / `ONEDRIVE_CLIENT_SECRET` | OneDrive — **coming soon** (UI sudah ada, tombol disabled) |
 | `STORAGE_TOKEN_ENCRYPTION_KEY` | enkripsi kredensial cloud storage (AES-256-GCM), `openssl rand -hex 32` |
-| `CRON_SECRET` | secret scheduler eksternal (`Authorization: Bearer`), `openssl rand -hex 32`; simpan juga sebagai GitHub Actions secret |
+| `CRON_SECRET` | secret Vercel Cron (`Authorization: Bearer`), `openssl rand -hex 32` |
 | `SMTP_HOST` / `SMTP_PORT` | host dan port SMTP untuk notifikasi email otomatis |
 | `SMTP_SECURE` | `true` untuk TLS langsung (umumnya port 465), `false` untuk STARTTLS (umumnya 587) |
 | `SMTP_USER` / `SMTP_PASSWORD` | kredensial SMTP server (**rahasia — hanya server**) |
@@ -302,7 +302,7 @@ Dropdown permission & checkbox Ignore Player Limit di tabel auto-save (PUT) seti
   dan tab **Activity** per server. Semua aksi penting dicatat (power, file edit, admin ops,
   event dari wings) lengkap dengan IP.
 - **Auto Backup + Cloud Storage** — jadwal backup per server (hourly/daily/weekly) yang
-  dieksekusi scheduler eksternal GitHub Actions: Wings membuat backup di node → panel men-download secara streaming →
+  dieksekusi Vercel Cron: Wings membuat backup di node → panel men-download secara streaming →
   upload ke cloud storage user (Google Drive, Dropbox, S3-compatible, SFTP, WebDAV) → retention
   otomatis. Lihat [Auto Backup System](#auto-backup-system-cloud-storage).
 
@@ -315,7 +315,7 @@ Fitur backup otomatis terjadwal yang mengirim backup server ke **cloud storage m
 ```
 Admin/Moderator set jadwal backup per server (tab Backups → Auto Backup Schedule)
         ↓
-GitHub Actions schedule (`.github/workflows/panel-backup.yml`, 03:00 UTC) → GET /api/cron/backup (Bearer CRON_SECRET)
+Vercel Cron (hourly, lihat vercel.json) → GET /api/cron/backup (Bearer CRON_SECRET)
         ↓
 Wings membuat file backup di node (adapter "wings")
         ↓
@@ -338,9 +338,8 @@ Retention: backup cloud terlama dihapus otomatis bila melebihi limit
    - `STORAGE_TOKEN_ENCRYPTION_KEY` — `openssl rand -hex 32`. Dipakai mengenkripsi AES-256-GCM
      access token / refresh token OAuth serta secret di config (S3 `secret_key`, SFTP/WebDAV
      `password`). **Token tidak pernah tersimpan plaintext dan tidak pernah tampil di UI/API.**
-   - `CRON_SECRET` — `openssl rand -hex 32`. GitHub Actions mengirimnya sebagai
+   - `CRON_SECRET` — `openssl rand -hex 32`. Vercel Cron mengirimnya sebagai
      `Authorization: Bearer {CRON_SECRET}`; handler memverifikasi dengan timing-safe compare.
-     Simpan nilai yang sama pada Vercel Environment Variables dan GitHub repository secret.
    - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — Google Cloud Console → Credentials →
      OAuth Client (Web). **Authorized redirect URI**:
      `{NEXT_PUBLIC_APP_URL}/api/auth/storage/callback/google`
@@ -348,12 +347,11 @@ Retention: backup cloud terlama dihapus otomatis bila melebihi limit
      `{NEXT_PUBLIC_APP_URL}/api/auth/storage/callback/dropbox`
    - `ONEDRIVE_CLIENT_ID` / `ONEDRIVE_CLIENT_SECRET` — placeholder; fitur OneDrive **coming soon**
      (tombol di UI sudah ada tapi disabled sampai kredensial tersedia).
-3. **GitHub Actions scheduler** — workflow di `.github/workflows/panel-*.yml` memanggil endpoint
-   terproteksi tanpa Vercel Cron: server status setiap 5 menit, node status setiap jam, dan backup
-   setiap hari pukul 03:00 UTC. Tambahkan repository secret `CRON_SECRET` di GitHub → Settings →
-   Secrets and variables → Actions. Workflow dapat dijalankan manual dari tab Actions.
-   Backup besar tetap membutuhkan plan Vercel yang mendukung `maxDuration = 300` untuk request API,
-   tetapi interval scheduler tidak lagi dibatasi oleh Vercel Cron.
+3. **Vercel Cron** — sudah terdaftar di [`vercel.json`](vercel.json):
+   `GET /api/cron/backup` setiap jam (`0 * * * *`). **Catatan:** Vercel Cron dengan interval
+   **< 1 hari butuh Vercel Pro**; jadwal hourly seperti ini jalan di semua plan, tetapi
+   proses backup (download + upload file besar) bisa melebihi limit durasi function Hobby —
+   gunakan **Vercel Pro** (`maxDuration = 300` sudah di-set di route terkait).
 
 ### Pemakaian
 
@@ -426,7 +424,7 @@ Retention: backup cloud terlama dihapus otomatis bila melebihi limit
 | `DELETE /api/servers/[id]/backup-schedule` | hapus jadwal |
 | `GET /api/servers/[id]/backup-logs` | history auto backup (maks 50) |
 | `POST /api/servers/[id]/backup-now` | jalankan pipeline backup sekarang |
-| `GET /api/cron/backup` | handler scheduler eksternal (Bearer `CRON_SECRET`) |
+| `GET /api/cron/backup` | handler Vercel Cron (Bearer `CRON_SECRET`) |
 | `GET /api/admin/backups` | overview semua jadwal (Owner Panel & Admin) |
 | `POST /api/admin/backups/run` | force run satu jadwal (body `{ schedule_id }`) |
 | `GET /api/admin/backup-logs` | monitoring semua backup log (Owner Panel & Admin): filter `status` (`all\\|pending\\|running\\|done\\|failed`), `provider`, `from`/`to` (`YYYY-MM-DD`), `q`, `sort` (`desc\\|asc`), `page` (20/halaman) + kartu statistik |
@@ -482,7 +480,7 @@ sudah login **dan** terverifikasi di-redirect dari halaman auth itu ke `/dashboa
 Halaman status publik tersedia di `/status` dan dapat dipasang pada domain
 `https://status.wangstore.web.id`. Halaman ini tidak membutuhkan login, menampilkan status
 semua node Wings, latency, uptime 90 hari, serta 90 kotak riwayat harian. Data dikumpulkan oleh
-GitHub Actions scheduler setiap jam melalui `GET /api/system` Wings dan disimpan di `node_status_logs` selama
+Vercel Cron setiap jam melalui `GET /api/system` Wings dan disimpan di `node_status_logs` selama
 maksimal 90 hari.
 
 | Endpoint | Auth | Fungsi |
@@ -490,10 +488,6 @@ maksimal 90 hari.
 | `GET /api/status` | publik | node, status terkini, latency, uptime 90 hari, history harian, overall, dan last updated |
 | `GET /api/cron/node-status` | `CRON_SECRET` | health check node per jam, simpan log, cleanup >90 hari, trigger node offline |
 | `GET /api/cron/server-status` | `CRON_SECRET` | polling server Wings tiap 5 menit dan trigger server crash |
-
-Semua jadwal di atas dijalankan GitHub Actions, bukan Vercel Cron. Vercel hanya menerima request
-API biasa dari runner GitHub, sehingga batas Cron Hobby Vercel tidak memengaruhi interval monitoring.
-`CRON_SECRET` wajib disimpan di GitHub Actions Secrets.
 
 `online` berarti Wings merespons di bawah 1 detik, `degraded` berarti latency minimal 1 detik
 atau node sedang maintenance, dan `offline` berarti request Wings gagal. Tambahkan domain custom
@@ -647,9 +641,8 @@ supabase/migrations/013_status_notifications.sql
 
 ## Catatan operasional
 
-- **Timeout API**: server-status/node-status dan announcement email memakai `maxDuration: 300`;
-  pastikan plan Vercel mendukung durasi tersebut. Scheduler-nya berjalan di GitHub Actions, bukan Vercel Cron.
-  Semua panggilan wings di repo ini
+- **Timeout Vercel**: cron server-status/node-status dan announcement email memakai `maxDuration: 300`;
+  pastikan plan Vercel mendukung durasi tersebut. Semua panggilan wings di repo ini
   cepat; backup berjalan async di node dan statusnya dilaporkan wings via remote API. Endpoint
   `download-server-file` me-stream file langsung ke Wings (memory aman), tetapi file yang sangat
   besar di koneksi lambat bisa melebihi 60 detik di Hobby plan — gunakan upload manual via File
