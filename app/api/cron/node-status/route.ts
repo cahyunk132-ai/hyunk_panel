@@ -1,4 +1,5 @@
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/session';
 import { requireCronSecret } from '@/lib/cron';
 import { sendNotification } from '@/lib/notifications';
 import { WingsClient } from '@/lib/wings/client';
@@ -20,14 +21,22 @@ interface NodeCheckResult {
 }
 
 /**
- * GET /api/cron/node-status — health check publik setiap jam.
+ * GET/POST /api/cron/node-status — health check node.
  *
- * Vercel Cron harus mengirim Authorization: Bearer CRON_SECRET. Token Wings
- * hanya didekripsi inside WingsClient di server dan tidak pernah masuk response.
+ * Scheduler/manual curl mengirim Authorization: Bearer CRON_SECRET. POST juga
+ * menerima session Owner Panel/Admin agar tombol refresh manual di halaman Nodes
+ * tidak perlu mengekspos CRON_SECRET ke browser. Token Wings hanya didekripsi
+ * inside WingsClient di server dan tidak pernah masuk response.
  */
-export async function GET(request: Request) {
+async function runNodeStatusCheck(request: Request) {
   const unauthorized = requireCronSecret(request);
-  if (unauthorized) return unauthorized;
+  if (unauthorized) {
+    // GET tetap khusus scheduler/CRON_SECRET. POST adalah jalur manual dari
+    // halaman Nodes dan harus memakai session Owner Panel/Admin.
+    if (request.method !== 'POST') return unauthorized;
+    const admin = await requireAdmin();
+    if (admin instanceof Response) return unauthorized;
+  }
 
   const service = getSupabaseServiceClient();
   const { data: nodes, error } = await service.from('nodes').select('*').order('created_at');
@@ -110,4 +119,12 @@ export async function GET(request: Request) {
     results,
     ...(cleanupError ? { cleanup_error: cleanupError.message } : {}),
   });
+}
+
+export async function GET(request: Request) {
+  return runNodeStatusCheck(request);
+}
+
+export async function POST(request: Request) {
+  return runNodeStatusCheck(request);
 }

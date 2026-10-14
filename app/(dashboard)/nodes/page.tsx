@@ -4,6 +4,7 @@ import { getSessionUser } from '@/lib/auth/session';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { NodeCard } from '@/components/nodes/NodeCard';
 import { NewNodeButton } from '@/components/nodes/NewNodeForm';
+import { NodeStatusRefreshButton } from '@/components/nodes/NodeStatusRefreshButton';
 import { isPanelAdmin } from '@/lib/auth/roles';
 
 export const dynamic = 'force-dynamic';
@@ -37,6 +38,7 @@ export default async function NodesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <NodeStatusRefreshButton />
           <Link href="/admin/nodes/migrate">
             <button className="inline-flex items-center gap-1.5 rounded-lg bg-base-600 px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:bg-base-700 border border-line">
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -70,6 +72,7 @@ export default async function NodesPage() {
                 is_maintenance: node.is_maintenance as boolean,
                 server_count: counts.get(node.id as string) ?? 0,
               }}
+              pollStatus
             />
           ))}
         </div>
