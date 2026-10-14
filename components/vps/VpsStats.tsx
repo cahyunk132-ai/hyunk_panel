@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 
 interface VpsStatsData {
   cpu: number;
+  cpu_model: string;
   ram: { used: number; total: number };
   disk: { used: string; total: string; percent: string };
 }
@@ -61,7 +62,15 @@ export function VpsStats({ vpsId }: { vpsId: string }) {
           signal: controller.signal,
         });
         const body = (await response.json().catch(() => ({}))) as Partial<VpsStatsData>;
-        if (!response.ok || typeof body.cpu !== 'number' || !body.ram || !body.disk) throw new Error('stats unavailable');
+        if (
+          !response.ok ||
+          typeof body.cpu !== 'number' ||
+          typeof body.cpu_model !== 'string' ||
+          !body.ram ||
+          !body.disk
+        ) {
+          throw new Error('stats unavailable');
+        }
         if (!active) return;
         setStats(body as VpsStatsData);
         setError(false);
@@ -99,6 +108,12 @@ export function VpsStats({ vpsId }: { vpsId: string }) {
 
   return (
     <div className="mt-4 space-y-3 border-t border-line-soft pt-3">
+      <div className="rounded-lg bg-base-900/60 px-3 py-2">
+        <p className="text-[10px] text-ink-faint">CPU Model</p>
+        <p className="mt-0.5 truncate text-[11px] font-medium text-ink" title={stats.cpu_model}>
+          {stats.cpu_model}
+        </p>
+      </div>
       <Metric
         label="CPU"
         value={stats.cpu}

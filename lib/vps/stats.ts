@@ -5,11 +5,13 @@ import type { VpsRecord } from '@/lib/vps/access';
 
 export interface VpsStats {
   cpu: number;
+  cpu_model: string;
   ram: { used: number; total: number };
   disk: { used: string; total: string; percent: string };
 }
 
-const STATS_COMMAND = `echo "CPU:$(top -bn1 | grep 'Cpu(s)' | awk '{print $2}' | cut -d'%' -f1)" && \\
+const STATS_COMMAND = `CPU_MODEL="$(lscpu 2>/dev/null | awk -F: '/Model name|Model/ {gsub(/^[[:space:]]+/, "", $2); if ($2 != "") {print $2; exit}}')"; if [ -z "$CPU_MODEL" ]; then CPU_MODEL="$(awk -F: '/model name|Hardware|Processor/ {gsub(/^[[:space:]]+/, "", $2); if ($2 != "") {print $2; exit}}' /proc/cpuinfo 2>/dev/null)"; fi; echo "CPU_MODEL:$CPU_MODEL" && \\
+echo "CPU:$(top -bn1 | grep 'Cpu(s)' | awk '{print $2}' | cut -d'%' -f1)" && \\
 echo "RAM:$(free -m | awk 'NR==2{printf "%s/%s", $3,$2}')" && \\
 echo "DISK:$(df -h / | awk 'NR==2{printf "%s/%s/%s", $3,$2,$5}')"`;
 
@@ -23,6 +25,7 @@ export function parseVpsStats(output: string): VpsStats {
   }
 
   const cpu = Number.parseFloat(lines.get('CPU') ?? '');
+  const cpuModel = lines.get('CPU_MODEL')?.trim() || 'Unknown CPU';
   const ramParts = (lines.get('RAM') ?? '').split('/');
   const diskParts = (lines.get('DISK') ?? '').split('/');
   const ramUsed = Number.parseInt(ramParts[0] ?? '', 10);
@@ -37,6 +40,7 @@ export function parseVpsStats(output: string): VpsStats {
 
   return {
     cpu: Math.min(100, Math.max(0, Number(cpu.toFixed(1)))),
+    cpu_model: cpuModel,
     ram: { used: Math.max(0, ramUsed), total: Math.max(0, ramTotal) },
     disk: {
       used: diskParts[0],
