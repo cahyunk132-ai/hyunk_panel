@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 
 interface VpsStatsData {
   cpu: number;
-  cpu_model: string;
+  cpu_model?: string;
   ram: { used: number; total: number };
   disk: { used: string; total: string; percent: string };
 }
@@ -49,6 +49,7 @@ function Metric({ label, value, detail, percentage }: {
 
 export function VpsStats({ vpsId }: { vpsId: string }) {
   const [stats, setStats] = useState<VpsStatsData | null>(null);
+  const [cpuModel, setCpuModel] = useState<string | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -62,17 +63,14 @@ export function VpsStats({ vpsId }: { vpsId: string }) {
           signal: controller.signal,
         });
         const body = (await response.json().catch(() => ({}))) as Partial<VpsStatsData>;
-        if (
-          !response.ok ||
-          typeof body.cpu !== 'number' ||
-          typeof body.cpu_model !== 'string' ||
-          !body.ram ||
-          !body.disk
-        ) {
+        if (!response.ok || typeof body.cpu !== 'number' || !body.ram || !body.disk) {
           throw new Error('stats unavailable');
         }
         if (!active) return;
         setStats(body as VpsStatsData);
+        if (typeof body.cpu_model === 'string' && body.cpu_model.trim()) {
+          setCpuModel(body.cpu_model.trim());
+        }
         setError(false);
       } catch {
         if (active && !controller.signal.aborted) {
@@ -84,6 +82,33 @@ export function VpsStats({ vpsId }: { vpsId: string }) {
 
     void load();
     const timer = window.setInterval(() => void load(), 10_000);
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [vpsId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+
+    async function loadCpuModel() {
+      try {
+        const response = await fetch(`/api/vps/${encodeURIComponent(vpsId)}/cpu-model`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        const body = (await response.json().catch(() => ({}))) as { cpu_model?: unknown };
+        if (!response.ok || typeof body.cpu_model !== 'string') throw new Error('CPU model unavailable');
+        if (active) setCpuModel(body.cpu_model.trim() || 'Unknown CPU');
+      } catch {
+        if (active && !controller.signal.aborted) setCpuModel('Tidak tersedia');
+      }
+    }
+
+    void loadCpuModel();
+    const timer = window.setInterval(() => void loadCpuModel(), 60 * 60 * 1000);
     return () => {
       active = false;
       controller.abort();
@@ -110,8 +135,8 @@ export function VpsStats({ vpsId }: { vpsId: string }) {
     <div className="mt-4 space-y-3 border-t border-line-soft pt-3">
       <div className="rounded-lg bg-base-900/60 px-3 py-2">
         <p className="text-[10px] text-ink-faint">CPU Model</p>
-        <p className="mt-0.5 truncate text-[11px] font-medium text-ink" title={stats.cpu_model}>
-          {stats.cpu_model}
+        <p className="mt-0.5 truncate text-[11px] font-medium text-ink" title={cpuModel ?? 'Mendeteksi model CPU…'}>
+          {cpuModel ?? 'Mendeteksi model CPU…'}
         </p>
       </div>
       <Metric
