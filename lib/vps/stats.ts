@@ -15,7 +15,7 @@ const CPU_MODEL_COMMAND = `${CPU_MODEL_SCRIPT}; echo "CPU_MODEL:$CPU_MODEL"`;
 const STATS_COMMAND = `${CPU_MODEL_SCRIPT}; echo "CPU_MODEL:$CPU_MODEL" && \\
 echo "CPU:$(top -bn1 | grep 'Cpu(s)' | awk '{print $2}' | cut -d'%' -f1)" && \\
 echo "RAM:$(free -m | awk 'NR==2{printf "%s/%s", $3,$2}')" && \\
-echo "DISK:$(df -h / | awk 'NR==2{printf "%s/%s/%s", $3,$2,$5}')`;
+echo "DISK:$(df -h / | awk 'NR==2{printf "%s/%s/%s", $3,$2,$5}')"`;
 
 /** Parse the compact output emitted by STATS_COMMAND. */
 export function parseVpsStats(output: string): VpsStats {
