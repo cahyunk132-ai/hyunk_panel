@@ -12,6 +12,7 @@
     "verify:subdomain-access": "node scripts/verify-subdomain-access.mjs"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.45.4",
     "@types/nprogress": "^0.2.3",
@@ -26,6 +27,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "server-only": "^0.0.1",
+    "ssh2": "^1.17.0",
     "ssh2-sftp-client": "^12.1.1",
     "webdav": "^5.11.0"
   },
@@ -33,6 +35,7 @@
     "@types/node": "^20.16.10",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",
+    "@types/ssh2": "^1.15.6",
     "@types/ssh2-sftp-client": "^9.0.6",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
