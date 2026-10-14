@@ -94,7 +94,7 @@ Setelah menjalankan [`012_vps_terminal.sql`](supabase/migrations/012_vps_termina
 
 Pemilik VPS dapat melihat, mengedit, dan menghapus VPS miliknya. Owner Panel/Admin dapat mengelola semua VPS; VPS yang dibagikan hanya tampil read-only bagi user penerima. Saat user membuka `/vps/{id}/terminal`, `GET /api/vps/{id}/terminal-token` memeriksa owner/assignment, mendekripsi credential di server, lalu menerbitkan JWT HS256 35 menit untuk `TERMINAL_SERVICE_URL`.
 
-Card VPS juga mengambil CPU, RAM, dan Disk melalui SSH setiap 10 detik. Halaman `/vps/{id}/files` menyediakan browse, editor Monaco, upload, download, rename, pembuatan file/folder, dan hapus melalui SFTP. Operasi tulis file hanya tersedia bagi owner VPS atau Owner Panel/Admin; user yang menerima assignment melihat mode read-only.
+Card VPS juga mengambil model CPU, CPU usage, RAM, dan Disk melalui SSH setiap 10 detik. Halaman `/vps/{id}/files` menyediakan browse, editor Monaco, upload, download, rename, pembuatan file/folder, dan hapus melalui SFTP. Operasi tulis file hanya tersedia bagi owner VPS atau Owner Panel/Admin; user yang menerima assignment melihat mode read-only.
 
 ### 4. Seed data existing (Fase 0)
 
@@ -160,7 +160,7 @@ membuat allocation otomatis, berguna untuk impor/seed.
 | `POST /api/vps` | User login menambahkan VPS miliknya; credential langsung dienkripsi server-side |
 | `GET/PATCH/DELETE /api/vps/{id}` | Baca metadata, ubah, atau hapus VPS; hanya owner atau Owner Panel/Admin |
 | `GET /api/vps/{id}/terminal-token` | User yang punya akses menerima `{ token, wsUrl }`; credential didekripsi server-side dan tidak dikembalikan sebagai field terpisah |
-| `GET /api/vps/{id}/stats` | CPU, RAM, dan Disk VPS; cache process-local 10 detik |
+| `GET /api/vps/{id}/stats` | Model CPU, CPU usage, RAM, dan Disk VPS; cache process-local 10 detik |
 | `GET /api/vps/{id}/files?path=/` | List direktori melalui SFTP |
 | `GET /api/vps/{id}/files/read?path=...` | Baca isi file untuk editor |
 | `POST /api/vps/{id}/files/write` | Tulis isi file (owner/admin) |
