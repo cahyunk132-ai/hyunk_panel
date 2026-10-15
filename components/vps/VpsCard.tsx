@@ -10,12 +10,14 @@ import { VpsStats } from './VpsStats';
 export function VpsCard({
   vps,
   canManage,
+  isOwner,
   onEdit,
   onDelete,
   deleting = false,
 }: {
   vps: VpsListItem;
   canManage: boolean;
+  isOwner: boolean;
   onEdit: () => void;
   onDelete: () => void;
   deleting?: boolean;
@@ -29,7 +31,9 @@ export function VpsCard({
             {vps.host}:{vps.port}
           </p>
         </div>
-        <Badge tone={canManage ? 'accent' : 'gray'}>{canManage ? 'Milik Anda' : 'Dibagikan'}</Badge>
+        <Badge tone={isOwner ? 'accent' : 'gray'}>
+          {isOwner ? 'Milik Anda' : canManage ? 'Dikelola admin' : 'Dibagikan'}
+        </Badge>
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 text-[11px]">
