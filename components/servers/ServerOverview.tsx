@@ -4,6 +4,7 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { PowerButtons } from '@/components/servers/PowerButtons';
 import { ResourceMonitor } from '@/components/servers/ResourceMonitor';
 import { Badge } from '@/components/ui/Badge';
+import { ServerBilling } from '@/components/servers/ServerBilling';
 import { useServerStatus } from '@/hooks/useServerStatus';
 
 export function ServerOverview({
@@ -13,6 +14,9 @@ export function ServerOverview({
   cpuLimit,
   diskMb,
   isSuspended,
+  expiresAt,
+  deleteAfterAt,
+  canManageBilling,
   canStart,
   canStop,
   canRestart,
@@ -25,6 +29,9 @@ export function ServerOverview({
   cpuLimit: number;
   diskMb: number | null;
   isSuspended: boolean;
+  expiresAt: string | null;
+  deleteAfterAt: string | null;
+  canManageBilling: boolean;
   canStart: boolean;
   canStop: boolean;
   canRestart: boolean;
@@ -38,6 +45,14 @@ export function ServerOverview({
 
   return (
     <div className="space-y-4">
+      <ServerBilling
+        serverId={serverId}
+        initialExpiresAt={expiresAt}
+        initialSuspended={isSuspended}
+        initialDeleteAfterAt={deleteAfterAt}
+        canEdit={canManageBilling}
+      />
+
       <Card>
         <CardHeader
           title="Kontrol daya"

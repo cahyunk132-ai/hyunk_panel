@@ -105,6 +105,9 @@ export interface ServerRow {
   egg_version_id?: string | null;
   status: ServerStatus;
   is_suspended: boolean;
+  expires_at: string | null;
+  suspended_at: string | null;
+  delete_after_at: string | null;
   created_at: string;
 }
 
@@ -448,6 +451,9 @@ export type NotificationType =
   | 'backup_success'
   | 'server_crash'
   | 'node_offline'
+  | 'server_suspended'
+  | 'server_deleted'
+  | 'server_expiring_soon'
   | 'announcement'
   | 'test';
 

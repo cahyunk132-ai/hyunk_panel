@@ -191,6 +191,52 @@ function renderEmail(type: NotificationType, data: NotificationData): RenderedEm
         ),
       };
     }
+    case 'server_suspended': {
+      const expiresAt = displayTime(data.expires_at as string | Date | undefined);
+      const subject = `⏸️ Server Disuspend — ${serverName}`;
+      const consolePath = data.serverId ? `/servers/${data.serverId}` : '/servers';
+      const text = `Server ${serverName} disuspend karena masa berlaku berakhir pada ${expiresAt}.\nMasa tenggang penghapusan: 7 hari.\n\n${panelUrl(consolePath)}`;
+      return {
+        subject,
+        text,
+        html: emailLayout(
+          subject,
+          `<p>Server <strong>${escapeHtml(serverName)}</strong> disuspend karena masa berlaku berakhir pada <strong>${escapeHtml(expiresAt)}</strong>.</p><p>Masa tenggang penghapusan: <strong>7 hari</strong>.</p>`,
+          panelUrl(consolePath),
+          'Buka Server',
+        ),
+      };
+    }
+    case 'server_deleted': {
+      const subject = `🗑️ Server Dihapus — ${serverName}`;
+      const text = `Server ${serverName} telah dihapus setelah masa tenggang billing berakhir pada ${time}.\nBackup cloud tidak ikut dihapus.\n\n${panelUrl('/servers')}`;
+      return {
+        subject,
+        text,
+        html: emailLayout(
+          subject,
+          `<p>Server <strong>${escapeHtml(serverName)}</strong> telah dihapus setelah masa tenggang billing berakhir.</p><p>Backup yang sudah tersimpan di cloud tidak ikut dihapus.</p>`,
+          panelUrl('/servers'),
+          'Buka Panel',
+        ),
+      };
+    }
+    case 'server_expiring_soon': {
+      const expiresAt = displayTime(data.expires_at as string | Date | undefined);
+      const subject = `⚠️ Server Akan Expired — ${serverName}`;
+      const consolePath = data.serverId ? `/servers/${data.serverId}` : '/servers';
+      const text = `Server ${serverName} akan expire pada ${expiresAt}. Perpanjang billing sebelum tanggal tersebut agar server tidak disuspend.\n\n${panelUrl(consolePath)}`;
+      return {
+        subject,
+        text,
+        html: emailLayout(
+          subject,
+          `<p>Server <strong>${escapeHtml(serverName)}</strong> akan expire pada <strong>${escapeHtml(expiresAt)}</strong>.</p><p>Perpanjang billing sebelum tanggal tersebut agar server tidak disuspend.</p>`,
+          panelUrl(consolePath),
+          'Perpanjang Billing',
+        ),
+      };
+    }
     case 'announcement': {
       const subject = `📢 ${title} — AULA WANG Panel`;
       const text = `Ada pengumuman baru dari tim AULA WANG:\n\n${title}\n${content}\n\nLihat selengkapnya di panel kamu.\n${panelUrl('/dashboard')}`;

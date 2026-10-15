@@ -1,6 +1,5 @@
 import 'server-only';
 import crypto from 'node:crypto';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   BackupLogRow,
   BackupScheduleRow,
@@ -10,7 +9,8 @@ import type {
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { resolveServerWings, logActivity } from '@/lib/wings/resolve';
 import { computeNextRunAt } from './schedule';
-import { buildBackupFileName, uploadToProvider, deleteFromProvider } from './index';
+import { buildBackupFileName, uploadToProvider } from './index';
+import { cleanupScheduleRetention } from '@/lib/billing/cleanupRetention';
 import { sendNotification } from '@/lib/notifications';
 
 /**
@@ -44,36 +44,6 @@ export interface BackupJobResult {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Enforce retention: hapus backup cloud yang melebihi limit (terlama dulu). */
-async function enforceRetention(
-  service: SupabaseClient,
-  schedule: BackupScheduleRow,
-  provider: StorageProviderRow,
-): Promise<void> {
-  const retention = schedule.retention ?? 5;
-  if (retention < 1) return;
-
-  const { data: logs } = await service
-    .from('backup_logs')
-    .select('id, storage_file_id, storage_file_name')
-    .eq('schedule_id', schedule.id)
-    .eq('status', 'done')
-    .order('started_at', { ascending: false });
-
-  const excess = (logs ?? []).slice(retention);
-  for (const old of excess) {
-    // Hapus file di cloud (best-effort) lalu hapus log-nya.
-    if (old.storage_file_id) {
-      try {
-        await deleteFromProvider(provider, old.storage_file_id as string);
-      } catch {
-        // sengaja ditelan — retention tetap lanjut ke log berikutnya
-      }
-    }
-    await service.from('backup_logs').delete().eq('id', old.id);
-  }
 }
 
 /**
@@ -282,8 +252,15 @@ export async function runBackupJob(
       },
     });
 
-    // 8. Retention: hapus backup cloud lama yang melebihi limit.
-    await enforceRetention(service, schedule, providerRow);
+    // 8. Retention: hapus backup cloud lama yang melebihi limit. The backup
+    // itself is already complete, so a retention/provider outage must not turn
+    // a successful backup into a failed backup log.
+    try {
+      await cleanupScheduleRetention(service, schedule, providerRow);
+    } catch {
+      // The daily cron runs cleanupRetention independently before backups and
+      // will retry this schedule on the next run.
+    }
 
     return result;
   } catch (err) {
