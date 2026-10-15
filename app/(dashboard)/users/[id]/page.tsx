@@ -2,7 +2,12 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
-import { UserDetailManager, type Assignment } from '@/components/users/UserDetailManager';
+import {
+  UserDetailManager,
+  type Assignment,
+  type VpsAssignment,
+  type VpsOption,
+} from '@/components/users/UserDetailManager';
 import { RoleBadge } from '@/components/users/RoleBadge';
 import { isPanelAdmin } from '@/lib/auth/roles';
 import type { UserRole } from '@/types';
@@ -40,10 +45,23 @@ export default async function UserDetailPage({ params }: { params: { id: string 
     };
   });
 
-  const { data: allServers } = await service
-    .from('servers')
-    .select('id, name')
-    .order('created_at', { ascending: true });
+  const [{ data: allServers }, { data: allVps }, { data: rawVpsAssignments }] = await Promise.all([
+    service
+      .from('servers')
+      .select('id, name')
+      .order('created_at', { ascending: true }),
+    service
+      .from('vps')
+      .select('id, name, host, port, username, owner_id')
+      .order('created_at', { ascending: true }),
+    service.from('vps_users').select('vps_id').eq('user_id', params.id),
+  ]);
+
+  const vpsOptions = (allVps ?? []) as VpsOption[];
+  const vpsById = new Map(vpsOptions.map((vps) => [vps.id, vps]));
+  const vpsAssignments: VpsAssignment[] = (rawVpsAssignments ?? [])
+    .map((assignment) => vpsById.get(assignment.vps_id as string))
+    .filter((vps): vps is VpsAssignment => Boolean(vps));
 
   return (
     <div className="space-y-6">
@@ -64,6 +82,8 @@ export default async function UserDetailPage({ params }: { params: { id: string 
         role={target.role as UserRole}
         assignments={assignments}
         allServers={(allServers ?? []) as Array<{ id: string; name: string }>}
+        vpsAssignments={vpsAssignments}
+        allVps={vpsOptions}
         isSelf={target.id === user.id}
       />
     </div>

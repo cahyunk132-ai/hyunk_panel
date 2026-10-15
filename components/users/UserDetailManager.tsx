@@ -23,6 +23,17 @@ interface ServerOption {
   name: string;
 }
 
+export interface VpsOption {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  owner_id: string | null;
+}
+
+export type VpsAssignment = VpsOption;
+
 const ALL_PERMISSIONS = [
   { value: 'start', label: 'Start' },
   { value: 'stop', label: 'Stop' },
@@ -44,6 +55,8 @@ export function UserDetailManager({
   role,
   assignments,
   allServers,
+  vpsAssignments,
+  allVps,
   isSelf,
 }: {
   userId: string;
@@ -51,17 +64,25 @@ export function UserDetailManager({
   role: UserRole;
   assignments: Assignment[];
   allServers: ServerOption[];
+  vpsAssignments: VpsAssignment[];
+  allVps: VpsOption[];
   isSelf: boolean;
 }) {
   const router = useRouter();
   const [selectedServer, setSelectedServer] = useState('');
   const [selectedPerms, setSelectedPerms] = useState<Set<string>>(new Set(['console']));
+  const [selectedVps, setSelectedVps] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const assignedIds = new Set(assignments.map((a) => a.server_id));
   const canAssignServer = role === 'user' || role === 'subuser';
   const available = canAssignServer ? allServers.filter((s) => !assignedIds.has(s.id)) : [];
+  const assignedVpsIds = new Set(vpsAssignments.map((vps) => vps.id));
+  const ownedVps = allVps.filter((vps) => vps.owner_id === userId);
+  const availableVps = canAssignServer
+    ? allVps.filter((vps) => vps.owner_id !== userId && !assignedVpsIds.has(vps.id))
+    : [];
 
   function togglePerm(p: string) {
     setSelectedPerms((prev) => {
@@ -118,7 +139,46 @@ export function UserDetailManager({
     }
   }
 
+  async function assignVps(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedVps) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/vps`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vps_id: selectedVps }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Gagal assign VPS');
+      setSelectedVps('');
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal assign VPS');
+    } finally {
+      setLoading(false);
+    }
+  }
 
+  async function unassignVps(vpsId: string) {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/vps`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vps_id: vpsId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Gagal mencabut akses VPS');
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal mencabut akses VPS');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="grid max-w-4xl gap-4">
@@ -216,6 +276,68 @@ export function UserDetailManager({
                   Assign
                 </Button>
               </div>
+            </form>
+          )}
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Akses VPS"
+          subtitle={`${ownedVps.length + vpsAssignments.length} VPS tersedia untuk ${username}`}
+        />
+        <div className="space-y-3 px-5 py-4">
+          {ownedVps.map((vps) => (
+            <div
+              key={`owned-${vps.id}`}
+              className="flex flex-wrap items-center gap-3 rounded-lg border border-accent/20 bg-accent-soft/20 px-4 py-3"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-ink">{vps.name}</p>
+                <p className="truncate font-mono text-[10px] text-ink-faint">
+                  {vps.host}:{vps.port} · {vps.username}
+                </p>
+              </div>
+              <Badge tone="accent">Pemilik</Badge>
+            </div>
+          ))}
+          {vpsAssignments.map((vps) => (
+            <div
+              key={vps.id}
+              className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-base-800/50 px-4 py-3"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-ink">{vps.name}</p>
+                <p className="truncate font-mono text-[10px] text-ink-faint">
+                  {vps.host}:{vps.port} · {vps.username}
+                </p>
+              </div>
+              <Badge tone="gray">Read-only</Badge>
+              <Button size="sm" variant="danger" loading={loading} onClick={() => unassignVps(vps.id)}>
+                Cabut
+              </Button>
+            </div>
+          ))}
+          {ownedVps.length === 0 && vpsAssignments.length === 0 && (
+            <p className="text-sm text-ink-faint">Belum ada VPS yang dimiliki atau di-assign.</p>
+          )}
+
+          {availableVps.length > 0 && (
+            <form onSubmit={assignVps} className="flex flex-col gap-3 border-t border-line-soft pt-4 sm:flex-row sm:items-end">
+              <div className="min-w-0 flex-1">
+                <p className="mb-1.5 text-xs font-medium text-ink-muted">Assign VPS read-only</p>
+                <Select value={selectedVps} onChange={(e) => setSelectedVps(e.target.value)} required>
+                  <option value="">Pilih VPS…</option>
+                  {availableVps.map((vps) => (
+                    <option key={vps.id} value={vps.id}>
+                      {vps.name} · {vps.host}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <Button type="submit" size="sm" loading={loading} disabled={!selectedVps}>
+                Assign VPS
+              </Button>
             </form>
           )}
         </div>

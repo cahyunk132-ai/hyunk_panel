@@ -4,6 +4,7 @@ import { encryptSecret } from '@/lib/storage/crypto';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { getVpsForUser } from '@/lib/vps/access';
 import { validateVpsPayload } from '@/lib/vps/validation';
+import { logActivity } from '@/lib/wings/resolve';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,6 +19,31 @@ function notFoundResponse() {
 
 function canManageVps(userId: string, role: Parameters<typeof isPanelAdmin>[0], ownerId: string | null) {
   return isPanelAdmin(role) || ownerId === userId;
+}
+
+function bodyRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+async function resolveOwnerId(
+  service: ReturnType<typeof getSupabaseServiceClient>,
+  requested: unknown,
+): Promise<{ ownerId: string | null; error?: never } | { ownerId?: never; error: Response }> {
+  if (requested === null) return { ownerId: null };
+  if (typeof requested !== 'string' || !requested.trim()) {
+    return {
+      error: Response.json({ error: 'owner_id harus berupa UUID user atau null' }, { status: 400 }),
+    };
+  }
+
+  const ownerId = requested.trim();
+  const { data: owner } = await service.from('users').select('id').eq('id', ownerId).maybeSingle();
+  if (!owner) {
+    return { error: Response.json({ error: 'User pemilik VPS tidak ditemukan' }, { status: 404 }) };
+  }
+  return { ownerId };
 }
 
 /** Return metadata only. The encrypted credential is never serialized. */
@@ -49,20 +75,34 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   const vps = await getVpsForUser(params.id, user);
   if (!vps || !canManageVps(user.id, user.role, vps.owner_id)) return notFoundResponse();
 
-  let body: unknown;
+  let rawBody: unknown;
   try {
-    body = await request.json();
+    rawBody = await request.json();
   } catch {
     return Response.json({ error: 'Body request tidak valid' }, { status: 400 });
   }
+  const body = bodyRecord(rawBody);
+  if (!body) return Response.json({ error: 'Body request tidak valid' }, { status: 400 });
 
-  const validated = validateVpsPayload(body, { partial: true });
-  if (validated.error || !validated.data) {
-    return Response.json({ error: validated.error ?? 'Data VPS tidak valid' }, { status: 400 });
+  const ownerProvided = Object.prototype.hasOwnProperty.call(body, 'owner_id');
+  if (ownerProvided && !isPanelAdmin(user.role)) {
+    return Response.json({ error: 'Hanya Owner Panel atau Admin yang dapat mengganti pemilik VPS' }, { status: 403 });
   }
 
-  const update: Record<string, string | number> = {};
-  const { data } = validated;
+  const fields = { ...body };
+  delete fields.owner_id;
+  const validated = validateVpsPayload(fields, { partial: true });
+  const hasFieldChanges = Boolean(validated.data && Object.keys(validated.data).length > 0);
+  if (validated.error && Object.keys(fields).length > 0) {
+    return Response.json({ error: validated.error }, { status: 400 });
+  }
+  if (!hasFieldChanges && !ownerProvided) {
+    return Response.json({ error: 'Tidak ada perubahan yang dikirim' }, { status: 400 });
+  }
+
+  const service = getSupabaseServiceClient();
+  const update: Record<string, string | number | null> = {};
+  const data = validated.data ?? {};
   if (data.name !== undefined) update.name = data.name;
   if (data.host !== undefined) update.host = data.host;
   if (data.port !== undefined) update.port = data.port;
@@ -80,7 +120,14 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     }
   }
 
-  const service = getSupabaseServiceClient();
+  let nextOwnerId = vps.owner_id;
+  if (ownerProvided) {
+    const resolved = await resolveOwnerId(service, body.owner_id);
+    if (resolved.error) return resolved.error;
+    nextOwnerId = resolved.ownerId;
+    update.owner_id = nextOwnerId;
+  }
+
   const { data: updated, error } = await service
     .from('vps')
     .update(update)
@@ -92,6 +139,18 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     console.error('Failed to update VPS', { vpsId: vps.id, error: error?.message ?? 'unknown error' });
     return Response.json({ error: 'VPS gagal diperbarui' }, { status: 500 });
   }
+
+  await logActivity({
+    userId: user.id,
+    action: ownerProvided && nextOwnerId !== vps.owner_id ? 'admin:vps-owner-update' : 'vps:update',
+    metadata: {
+      vps_id: vps.id,
+      previous_owner_id: vps.owner_id,
+      owner_id: nextOwnerId,
+      fields: Object.keys(update).filter((field) => field !== 'credential'),
+      credential_changed: data.credential !== undefined,
+    },
+  });
 
   return Response.json({ vps: updated });
 }
@@ -110,6 +169,12 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
     console.error('Failed to delete VPS', { vpsId: vps.id, error: error.message });
     return Response.json({ error: 'VPS gagal dihapus' }, { status: 500 });
   }
+
+  await logActivity({
+    userId: user.id,
+    action: isPanelAdmin(user.role) && vps.owner_id !== user.id ? 'admin:vps-delete' : 'vps:delete',
+    metadata: { vps_id: vps.id, owner_id: vps.owner_id },
+  });
 
   return Response.json({ success: true });
 }

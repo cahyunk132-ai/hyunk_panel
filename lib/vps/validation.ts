@@ -3,6 +3,8 @@ export interface VpsPayload {
   host?: string;
   port?: number;
   username?: string;
+  /** Only Owner Panel/Admin may send this field to create/update on behalf of a user. */
+  owner_id?: string | null;
   /** Plaintext only while inside the HTTPS API request; encrypt before storage. */
   credential?: string;
 }

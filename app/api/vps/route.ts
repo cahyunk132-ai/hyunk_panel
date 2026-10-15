@@ -1,8 +1,10 @@
 import { getSessionUser } from '@/lib/auth/session';
+import { isPanelAdmin } from '@/lib/auth/roles';
 import { encryptSecret } from '@/lib/storage/crypto';
 import { listVpsForUser } from '@/lib/vps/access';
 import { validateVpsPayload } from '@/lib/vps/validation';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
+import { logActivity } from '@/lib/wings/resolve';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,7 +19,10 @@ export async function GET() {
   return Response.json({ vps: await listVpsForUser(user) });
 }
 
-/** Create a VPS owned by the authenticated user. */
+/**
+ * Create a VPS. Regular users always become the owner of their own VPS;
+ * Owner Panel/Admin may set owner_id to create one on behalf of another user.
+ */
 export async function POST(request: Request) {
   const user = await getSessionUser();
   if (!user) return Response.json({ error: 'Tidak terautentikasi' }, { status: 401 });
@@ -34,6 +39,27 @@ export async function POST(request: Request) {
     return Response.json({ error: validated.error ?? 'Data VPS tidak valid' }, { status: 400 });
   }
 
+  const rawOwnerId =
+    typeof body === 'object' && body !== null && !Array.isArray(body)
+      ? (body as Record<string, unknown>).owner_id
+      : undefined;
+  if (rawOwnerId !== undefined && !isPanelAdmin(user.role)) {
+    return Response.json({ error: 'Hanya Owner Panel atau Admin yang dapat menentukan pemilik VPS' }, { status: 403 });
+  }
+
+  const service = getSupabaseServiceClient();
+  let ownerId: string | null = user.id;
+  if (rawOwnerId !== undefined) {
+    if (rawOwnerId !== null && (typeof rawOwnerId !== 'string' || !rawOwnerId.trim())) {
+      return Response.json({ error: 'owner_id harus berupa UUID user atau null' }, { status: 400 });
+    }
+    ownerId = typeof rawOwnerId === 'string' ? rawOwnerId.trim() : null;
+    if (ownerId) {
+      const { data: owner } = await service.from('users').select('id').eq('id', ownerId).maybeSingle();
+      if (!owner) return Response.json({ error: 'User pemilik VPS tidak ditemukan' }, { status: 404 });
+    }
+  }
+
   const { data } = validated;
   let encryptedCredential: string;
   try {
@@ -45,7 +71,6 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Credential VPS tidak dapat diamankan' }, { status: 500 });
   }
 
-  const service = getSupabaseServiceClient();
   const { data: inserted, error } = await service
     .from('vps')
     .insert({
@@ -54,8 +79,7 @@ export async function POST(request: Request) {
       port: data.port,
       username: data.username,
       credential: encryptedCredential,
-      // Never accept owner_id from the browser.
-      owner_id: user.id,
+      owner_id: ownerId || null,
     })
     .select(PUBLIC_VPS_FIELDS)
     .single();
@@ -64,6 +88,12 @@ export async function POST(request: Request) {
     console.error('Failed to create VPS', { error: error?.message ?? 'unknown error' });
     return Response.json({ error: 'VPS gagal ditambahkan' }, { status: 500 });
   }
+
+  await logActivity({
+    userId: user.id,
+    action: isPanelAdmin(user.role) && ownerId !== user.id ? 'admin:vps-create' : 'vps:create',
+    metadata: { vps_id: inserted.id, owner_id: ownerId || null },
+  });
 
   return Response.json({ vps: inserted }, { status: 201 });
 }

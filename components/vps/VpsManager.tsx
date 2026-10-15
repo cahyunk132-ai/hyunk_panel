@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/Button';
-import { Field, Input } from '@/components/ui/Input';
+import { Field, Input, Select } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { toast } from '@/lib/utils/toast';
 import type { VpsListItem } from '@/types';
@@ -14,6 +14,14 @@ interface VpsForm {
   port: string;
   username: string;
   credential: string;
+  ownerId: string;
+}
+
+interface VpsUserOption {
+  id: string;
+  username: string;
+  email: string | null;
+  role: string;
 }
 
 const EMPTY_FORM: VpsForm = {
@@ -22,6 +30,7 @@ const EMPTY_FORM: VpsForm = {
   port: '22',
   username: '',
   credential: '',
+  ownerId: '',
 };
 
 function formFromVps(vps: VpsListItem): VpsForm {
@@ -31,6 +40,7 @@ function formFromVps(vps: VpsListItem): VpsForm {
     port: String(vps.port),
     username: vps.username,
     credential: '',
+    ownerId: vps.owner_id ?? '',
   };
 }
 
@@ -46,10 +56,12 @@ export function VpsManager({
   initialVps,
   currentUserId,
   canManageAll,
+  assignableUsers,
 }: {
   initialVps: VpsListItem[];
   currentUserId: string;
   canManageAll: boolean;
+  assignableUsers: VpsUserOption[];
 }) {
   const [vpsList, setVpsList] = useState(initialVps);
   const [formOpen, setFormOpen] = useState(false);
@@ -63,7 +75,7 @@ export function VpsManager({
 
   function openCreate() {
     setEditingVps(null);
-    setForm(EMPTY_FORM);
+    setForm({ ...EMPTY_FORM, ownerId: canManageAll ? currentUserId : '' });
     setFormError(null);
     setFormOpen(true);
   }
@@ -105,10 +117,15 @@ export function VpsManager({
       setFormError('Credential wajib diisi saat menambahkan VPS.');
       return;
     }
+    if (canManageAll && !form.ownerId) {
+      setFormError('Pilih user pemilik VPS.');
+      return;
+    }
 
     const payload: Record<string, string | number> = { name, host, port, username };
     // Empty credential on edit intentionally keeps the existing encrypted value.
     if (form.credential) payload.credential = form.credential;
+    if (canManageAll) payload.owner_id = form.ownerId;
 
     setSaving(true);
     setFormError(null);
@@ -188,6 +205,7 @@ export function VpsManager({
               key={vps.id}
               vps={vps}
               canManage={canManage(vps)}
+              isOwner={vps.owner_id === currentUserId}
               onEdit={() => openEdit(vps)}
               onDelete={() => void deleteVps(vps)}
               deleting={deletingId === vps.id}
@@ -205,6 +223,23 @@ export function VpsManager({
           <div className="rounded-lg border border-accent/20 bg-accent-soft px-3 py-2.5 text-xs text-ink-muted">
             Credential dienkripsi di server dan tidak pernah ditampilkan kembali setelah disimpan.
           </div>
+
+          {canManageAll && (
+            <Field label="Pemilik VPS" hint="VPS yang dibuat admin akan langsung masuk ke akun user ini." required>
+              <Select
+                value={form.ownerId}
+                onChange={(event) => updateField('ownerId', event.target.value)}
+                required
+              >
+                <option value="">Pilih user…</option>
+                {assignableUsers.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.username} · {option.role}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
 
           <Field label="Nama VPS" required>
             <Input

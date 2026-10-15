@@ -92,7 +92,7 @@ Set domain `panel.wangstore.web.id` ke project Vercel.
 
 Setelah menjalankan [`012_vps_terminal.sql`](supabase/migrations/012_vps_terminal.sql), user dapat menambahkan VPS sendiri dari halaman `/vps` melalui tombol **+ Tambah VPS**. Form mengirim credential melalui HTTPS ke API panel; API langsung mengenkripsinya memakai `encryptSecret(...)` dari `lib/storage/crypto.ts` sebelum disimpan. Credential plaintext tidak disimpan atau dikembalikan ke browser.
 
-Pemilik VPS dapat melihat, mengedit, dan menghapus VPS miliknya. Owner Panel/Admin dapat mengelola semua VPS; VPS yang dibagikan hanya tampil read-only bagi user penerima. Saat user membuka `/vps/{id}/terminal`, `GET /api/vps/{id}/terminal-token` memeriksa owner/assignment, mendekripsi credential di server, lalu menerbitkan JWT HS256 35 menit untuk `TERMINAL_SERVICE_URL`.
+Owner Panel/Admin dapat memilih user pemilik saat menambahkan atau mengedit VPS, sehingga VPS langsung muncul di akun user tersebut. Dari detail user, admin juga dapat memberikan atau mencabut akses VPS tambahan dalam mode read-only. Pemilik VPS dapat melihat, mengedit, dan menghapus VPS miliknya; VPS yang dibagikan hanya tampil read-only bagi user penerima. Saat user membuka `/vps/{id}/terminal`, `GET /api/vps/{id}/terminal-token` memeriksa owner/assignment, mendekripsi credential di server, lalu menerbitkan JWT HS256 35 menit untuk `TERMINAL_SERVICE_URL`.
 
 Card VPS mengambil model CPU secara on-demand melalui endpoint SSH (tanpa Cron) dan CPU usage, RAM, serta Disk setiap 10 detik. Model CPU di-cache server selama 1 jam. Halaman `/vps/{id}/files` menyediakan browse, editor Monaco, upload, download, rename, pembuatan file/folder, dan hapus melalui SFTP. Operasi tulis file hanya tersedia bagi owner VPS atau Owner Panel/Admin; user yang menerima assignment melihat mode read-only.
 
@@ -157,8 +157,10 @@ membuat allocation otomatis, berguna untuk impor/seed.
 | Endpoint | Fungsi |
 |---|---|
 | `GET /api/vps` | Daftar VPS yang dimiliki/di-assign ke user, tanpa credential |
-| `POST /api/vps` | User login menambahkan VPS miliknya; credential langsung dienkripsi server-side |
-| `GET/PATCH/DELETE /api/vps/{id}` | Baca metadata, ubah, atau hapus VPS; hanya owner atau Owner Panel/Admin |
+| `POST /api/vps` | User login menambahkan VPS miliknya; Owner Panel/Admin dapat mengirim `owner_id` untuk menambahkan VPS bagi user lain |
+| `GET/PATCH/DELETE /api/vps/{id}` | Baca metadata, ubah, atau hapus VPS; hanya owner atau Owner Panel/Admin; `owner_id` hanya dapat diubah admin |
+| `POST/DELETE /api/admin/users/{id}/vps` | Owner Panel/Admin memberikan atau mencabut akses VPS read-only user |
+
 | `GET /api/vps/{id}/terminal-token` | User yang punya akses menerima `{ token, wsUrl }`; credential didekripsi server-side dan tidak dikembalikan sebagai field terpisah |
 | `GET /api/vps/{id}/stats` | Model CPU, CPU usage, RAM, dan Disk VPS; cache process-local 10 detik |
 | `GET /api/vps/{id}/cpu-model` | Baca model CPU secara on-demand melalui SSH; cache server 1 jam, tanpa Vercel Cron |
