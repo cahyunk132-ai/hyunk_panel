@@ -41,8 +41,8 @@ Browser ──► /api/... (Next.js API route, serverless) ──► Wings API (
 ### 1. Supabase
 
 1. Buat project baru di [supabase.com](https://supabase.com).
-2. Buka **SQL Editor**, jalankan [`001_initial.sql`](supabase/migrations/001_initial.sql), [`002_role_management.sql`](supabase/migrations/002_role_management.sql), [`003_egg_system.sql`](supabase/migrations/003_egg_system.sql), [`004_auto_download.sql`](supabase/migrations/004_auto_download.sql), [`005_auto_backup.sql`](supabase/migrations/005_auto_backup.sql), [`006_server_subdomains.sql`](supabase/migrations/006_server_subdomains.sql), [`007_auto_server_users.sql`](supabase/migrations/007_auto_server_users.sql), dan [`008_count_user_subdomains.sql`](supabase/migrations/008_count_user_subdomains.sql), lalu [`009_drop_subdomain_quota.sql`](supabase/migrations/009_drop_subdomain_quota.sql), [`010_add_backup_schedule_permission.sql`](supabase/migrations/010_add_backup_schedule_permission.sql), dan [`011_announcements.sql`](supabase/migrations/011_announcements.sql), lalu [`012_vps_terminal.sql`](supabase/migrations/012_vps_terminal.sql), dan [`013_status_notifications.sql`](supabase/migrations/013_status_notifications.sql) untuk public status page serta notifikasi email.
-   Migration kedua menambahkan role hierarchy, subuser assignment, batas lima Owner Panel, dan policy RLS berbasis role. Migration ketiga menambahkan Egg, versi, assignment Egg ke node, serta referensi Egg/versi aktif pada server. Migration keempat menambahkan kolom auto-download pada versi Egg (provider, URL template custom, variabel, filename, flag executable). Migration kelima menambahkan **Auto Backup System**: tabel `storage_providers`, `backup_schedules`, dan `backup_logs` beserta RLS-nya. Migration keenam menambahkan **Subdomain Manager**: tabel `server_subdomains` (subdomain per server → IP:port via reverse proxy Wings) beserta RLS-nya. Migration ketujuh mengisi baris `server_users` yang hilang untuk server yang sudah ada plus trigger auto-assign owner. Migration kedelapan sempat menambahkan function `count_user_subdomains(uuid)` untuk kuota subdomain per user, dan migration kesembilan **menghapusnya** — sistem subdomain sekarang **satu subdomain aktif per server tanpa kuota per user**, jadi function kuota itu tidak dipakai lagi. Migration kesepuluh menambahkan permission `backup.schedule` pada assignment yang sudah ada. Migration kesebelas menambahkan **Announcement System**: tabel `announcements` (broadcast pengumuman admin → banner di panel user) beserta RLS-nya. Migration kedua belas menambahkan tabel `vps`/`vps_users` untuk **VPS Terminal**; credential VPS wajib disimpan terenkripsi dengan `STORAGE_TOKEN_ENCRYPTION_KEY` dan hanya endpoint token yang boleh membacanya. Migration ketiga belas menambahkan `node_status_logs`, `notification_settings`, `notification_logs`, serta kolom delivery email pada `announcements`.
+2. Buka **SQL Editor**, jalankan [`001_initial.sql`](supabase/migrations/001_initial.sql), [`002_role_management.sql`](supabase/migrations/002_role_management.sql), [`003_egg_system.sql`](supabase/migrations/003_egg_system.sql), [`004_auto_download.sql`](supabase/migrations/004_auto_download.sql), [`005_auto_backup.sql`](supabase/migrations/005_auto_backup.sql), [`006_server_subdomains.sql`](supabase/migrations/006_server_subdomains.sql), [`007_auto_server_users.sql`](supabase/migrations/007_auto_server_users.sql), dan [`008_count_user_subdomains.sql`](supabase/migrations/008_count_user_subdomains.sql), lalu [`009_drop_subdomain_quota.sql`](supabase/migrations/009_drop_subdomain_quota.sql), [`010_add_backup_schedule_permission.sql`](supabase/migrations/010_add_backup_schedule_permission.sql), dan [`011_announcements.sql`](supabase/migrations/011_announcements.sql), lalu [`012_vps_terminal.sql`](supabase/migrations/012_vps_terminal.sql), [`013_status_notifications.sql`](supabase/migrations/013_status_notifications.sql), dan [`015_billing.sql`](supabase/migrations/015_billing.sql) untuk public status, notifikasi email, billing expiry, dan auto-suspend.
+   Migration kedua menambahkan role hierarchy, subuser assignment, batas lima Owner Panel, dan policy RLS berbasis role. Migration ketiga menambahkan Egg, versi, assignment Egg ke node, serta referensi Egg/versi aktif pada server. Migration keempat menambahkan kolom auto-download pada versi Egg (provider, URL template custom, variabel, filename, flag executable). Migration kelima menambahkan **Auto Backup System**: tabel `storage_providers`, `backup_schedules`, dan `backup_logs` beserta RLS-nya. Migration keenam menambahkan **Subdomain Manager**: tabel `server_subdomains` (subdomain per server → IP:port via reverse proxy Wings) beserta RLS-nya. Migration ketujuh mengisi baris `server_users` yang hilang untuk server yang sudah ada plus trigger auto-assign owner. Migration kedelapan sempat menambahkan function `count_user_subdomains(uuid)` untuk kuota subdomain per user, dan migration kesembilan **menghapusnya** — sistem subdomain sekarang **satu subdomain aktif per server tanpa kuota per user**, jadi function kuota itu tidak dipakai lagi. Migration kesepuluh menambahkan permission `backup.schedule` pada assignment yang sudah ada. Migration kesebelas menambahkan **Announcement System**: tabel `announcements` (broadcast pengumuman admin → banner di panel user) beserta RLS-nya. Migration kedua belas menambahkan tabel `vps`/`vps_users` untuk **VPS Terminal**; credential VPS wajib disimpan terenkripsi dengan `STORAGE_TOKEN_ENCRYPTION_KEY` dan hanya endpoint token yang boleh membacanya. Migration ketiga belas menambahkan `node_status_logs`, `notification_settings`, `notification_logs`, serta kolom delivery email pada `announcements`. Migration 015 menambahkan `expires_at`, `suspended_at`, dan `delete_after_at` pada server untuk auto-suspend billing.
 3. Buat user pertama: **Authentication → Users → Add user** (email + password). Centang **Auto Confirm User** — sejak fitur [Email Verification](#email-verification--reset-password) aktif, akun dengan email belum terverifikasi hanya bisa membuka `/verify-email` dan tidak bisa memakai panel.
 4. Atur **Authentication → URL Configuration**: isi **Site URL** dengan `NEXT_PUBLIC_APP_URL` (mis. `https://panel.wangstore.web.id`) dan tambahkan `https://panel.wangstore.web.id/auth/callback` ke **Redirect URLs** supaya link verifikasi email & reset password kembali ke panel. Pastikan **Authentication → Providers → Email → Confirm email** aktif bila ingin pendaftaran baru wajib verifikasi, dan isi **SMTP** (Auth → SMTP) agar email benar-benar terkirim.
 5. Jadikan Owner Panel pertama — di SQL Editor:
@@ -302,9 +302,10 @@ Dropdown permission & checkbox Ignore Player Limit di tabel auto-save (PUT) seti
   dan tab **Activity** per server. Semua aksi penting dicatat (power, file edit, admin ops,
   event dari wings) lengkap dengan IP.
 - **Auto Backup + Cloud Storage** — jadwal backup per server (hourly/daily/weekly) yang
-  dieksekusi Vercel Cron harian: Wings membuat backup di node → panel men-download secara streaming →
-  upload ke cloud storage user (Google Drive, Dropbox, S3-compatible, SFTP, WebDAV) → retention
-  otomatis. Lihat [Auto Backup System](#auto-backup-system-cloud-storage).
+  dieksekusi Vercel Cron harian: sebelum backup, billing expired disuspend dan server yang melewati
+  grace period dibersihkan; file cloud lama juga dipangkas sesuai retention. Wings membuat backup
+  di node → panel men-download secara streaming → upload ke cloud storage user (Google Drive,
+  Dropbox, S3-compatible, SFTP, WebDAV). Lihat [Auto Backup System](#auto-backup-system-cloud-storage).
 
 ## Auto Backup System (Cloud Storage)
 
@@ -316,6 +317,8 @@ Fitur backup otomatis terjadwal yang mengirim backup server ke **cloud storage m
 Admin/Moderator set jadwal backup per server (tab Backups → Auto Backup Schedule)
         ↓
 Vercel Cron (03:00 UTC, lihat vercel.json) → GET /api/cron/backup (Bearer CRON_SECRET)
+        ↓
+Billing maintenance: reminder H-3 → suspend expired → hapus server setelah grace period → cleanup retention
         ↓
 Wings membuat file backup di node (adapter "wings")
         ↓
@@ -348,11 +351,13 @@ Retention: backup cloud terlama dihapus otomatis bila melebihi limit
    - `ONEDRIVE_CLIENT_ID` / `ONEDRIVE_CLIENT_SECRET` — placeholder; fitur OneDrive **coming soon**
      (tombol di UI sudah ada tapi disabled sampai kredensial tersedia).
 3. **Vercel Cron** — Hobby hanya mendaftarkan satu job harian di [`vercel.json`](vercel.json):
-   `GET /api/cron/backup` pukul 03:00 UTC (`0 3 * * *`). Endpoint node-status dan
-   server-status tetap tersedia untuk pemanggilan manual, tetapi tidak didaftarkan sebagai Cron.
-   Status di halaman Nodes diperbarui dengan polling browser 60 detik; status di daftar Servers
-   diperbarui dengan polling browser 30 detik. Proses backup (download + upload file besar) bisa
-   melebihi limit durasi function Hobby — `maxDuration = 300` sudah di-set di route terkait.
+   `GET /api/cron/backup` pukul 03:00 UTC (`0 3 * * *`). Job ini juga menjalankan billing maintenance:
+   reminder H-3, suspend expired, hapus server setelah grace period 7 hari, dan cleanup retention.
+   Endpoint node-status dan server-status tetap tersedia untuk pemanggilan manual, tetapi tidak
+   didaftarkan sebagai Cron. Status di halaman Nodes diperbarui dengan polling browser 60 detik;
+   status di daftar Servers diperbarui dengan polling browser 30 detik. Proses backup (download +
+   upload file besar) bisa melebihi limit durasi function Hobby — `maxDuration = 300` sudah di-set
+   di route terkait.
 
 ### Pemakaian
 
@@ -425,7 +430,8 @@ Retention: backup cloud terlama dihapus otomatis bila melebihi limit
 | `DELETE /api/servers/[id]/backup-schedule` | hapus jadwal |
 | `GET /api/servers/[id]/backup-logs` | history auto backup (maks 50) |
 | `POST /api/servers/[id]/backup-now` | jalankan pipeline backup sekarang |
-| `GET /api/cron/backup` | handler Vercel Cron (Bearer `CRON_SECRET`) |
+| `GET /api/cron/backup` | handler Vercel Cron (Bearer `CRON_SECRET`); juga menjalankan billing maintenance |
+| `PATCH /api/admin/servers/{id}/billing` | set/reset `expires_at` dan reset suspension (Owner Panel/Admin) |
 | `GET /api/admin/backups` | overview semua jadwal (Owner Panel & Admin) |
 | `POST /api/admin/backups/run` | force run satu jadwal (body `{ schedule_id }`) |
 | `GET /api/admin/backup-logs` | monitoring semua backup log (Owner Panel & Admin): filter `status` (`all\\|pending\\|running\\|done\\|failed`), `provider`, `from`/`to` (`YYYY-MM-DD`), `q`, `sort` (`desc\\|asc`), `page` (20/halaman) + kartu statistik |
@@ -574,7 +580,8 @@ Semua aksi admin dicatat di audit log (`/activity`) sebagai `admin:announcement-
 
 ## Batasan yang disengaja (mengikuti brief)
 
-- ❌ Tidak ada billing/payment. ❌ Tidak ada auto-provisioning massal.
+- ❌ Tidak ada billing/payment gateway atau penagihan otomatis. Billing expiry yang tersedia hanya menjalankan
+  auto-suspend, grace period, dan retention sesuai tanggal yang diatur admin. ❌ Tidak ada auto-provisioning massal.
 - ❌ Panel tidak pernah menyentuh `/var/lib/pterodactyl/volumes` kecuali perintah eksplisit
   user lewat UI (file manager/backup).
 - ❌ "Hapus permanen server + data" selalu butuh konfirmasi ganda (ketik nama server).
@@ -626,6 +633,8 @@ lib/
   storage/      → auto backup: crypto.ts (enkripsi kredensial), schedule.ts (next_run_at),
                   tokens.ts (refresh OAuth), gdrive/dropbox/s3/sftp/webdav.ts (upload
                   streaming), backupJob.ts (pipeline cron/manual/admin)
+  billing/      → suspendExpired.ts, deleteExpiredData.ts, cleanupRetention.ts
+                  (maintenance billing yang dijalankan bersama cron backup harian)
   terminal/     → jwt.ts (JWT HS256 35 menit untuk terminal service eksternal)
   vps/          → access.ts/http.ts (owner/assignment guard), ssh.ts (SSH/SFTP),
                   stats.ts (monitoring + cache 10 detik), validation.ts
@@ -643,13 +652,15 @@ supabase/migrations/010_add_backup_schedule_permission.sql
 supabase/migrations/011_announcements.sql
 supabase/migrations/012_vps_terminal.sql
 supabase/migrations/013_status_notifications.sql
+supabase/migrations/015_billing.sql
 ```
 
 ## Catatan operasional
 
-- **Timeout Vercel**: cron server-status/node-status dan announcement email memakai `maxDuration: 300`;
-  pastikan plan Vercel mendukung durasi tersebut. Semua panggilan wings di repo ini
-  cepat; backup berjalan async di node dan statusnya dilaporkan wings via remote API. Endpoint
+- **Timeout Vercel**: route backup harian (termasuk billing maintenance) memakai `maxDuration: 300`;
+  pastikan plan Vercel mendukung durasi tersebut. Endpoint node-status dan server-status tetap
+  tersedia untuk pemanggilan manual dan tidak menjadi Cron tambahan. Semua panggilan Wings di repo ini
+  cepat; backup berjalan async di node dan statusnya dilaporkan Wings via remote API. Endpoint
   `download-server-file` me-stream file langsung ke Wings (memory aman), tetapi file yang sangat
   besar di koneksi lambat bisa melebihi 60 detik di Hobby plan — gunakan upload manual via File
   Manager sebagai fallback untuk kasus itu.

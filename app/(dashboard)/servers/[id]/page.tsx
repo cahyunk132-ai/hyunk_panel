@@ -1,5 +1,6 @@
 import { notFound, redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
+import { isPanelAdmin } from '@/lib/auth/roles';
 import {
   getServerByIdOrUuid,
   getEffectivePermissions,
@@ -28,6 +29,9 @@ export default async function ServerPage({ params }: { params: { id: string } })
       cpuLimit={server.cpu_limit}
       diskMb={server.disk_mb}
       isSuspended={server.is_suspended}
+      expiresAt={server.expires_at}
+      deleteAfterAt={server.delete_after_at}
+      canManageBilling={isPanelAdmin(user.role)}
       canStart={permissionsInclude(perms, 'start')}
       canStop={permissionsInclude(perms, 'stop')}
       canRestart={permissionsInclude(perms, 'restart')}
