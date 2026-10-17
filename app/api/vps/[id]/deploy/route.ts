@@ -9,6 +9,7 @@ import {
   isSafeArchiveEntry,
   shellQuote,
   validateAppName,
+  withPath,
   validateDeployPath,
   validateInterpreter,
 } from '@/lib/vps/commands';
@@ -282,13 +283,15 @@ export async function POST(request: Request, { params }: { params: { id: string 
           if (entryResult.code !== 0) throw new Error(commandOutput(entryResult) || 'Gagal mendeteksi entry point');
           const entry = validateEntryPath(entryResult.stdout);
           const startInterpreter = interpreter || (appType === 'python' ? 'python3' : appType === 'node' ? 'node' : undefined);
-          const startCommand = [
-            `pm2 start ${shellQuote(entry)}`,
-            `--name ${shellQuote(appName)}`,
-            `--cwd ${shellQuote(deployPath)}`,
-            startInterpreter ? `--interpreter ${shellQuote(startInterpreter)}` : '',
-            '&& pm2 save',
-          ].filter(Boolean).join(' ');
+          const startCommand = withPath(
+            [
+              `pm2 start ${shellQuote(entry)}`,
+              `--name ${shellQuote(appName)}`,
+              `--cwd ${shellQuote(deployPath)}`,
+              startInterpreter ? `--interpreter ${shellQuote(startInterpreter)}` : '',
+              '&& pm2 save',
+            ].filter(Boolean).join(' '),
+          );
           emitStep('Starting app...');
           const started = await runVpsCommand(access.vps, startCommand, onOutput);
           if (started.code !== 0) throw new Error(commandOutput(started) || 'Gagal menjalankan app melalui PM2');
