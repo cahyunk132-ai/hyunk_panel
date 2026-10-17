@@ -71,22 +71,53 @@ export async function getVpsForUser(id: string, user: SessionUser): Promise<VpsR
   return vps;
 }
 
-/** Find the preferred backup relay VPS owned by a server owner. */
-export async function findOwnerVps(ownerId: string): Promise<VpsRecord | null> {
-  if (!ownerId) return null;
+/**
+ * Find the preferred backup relay VPS.
+ * Priority:
+ * 1. VPS owned by ownerId with is_backup_relay = true
+ * 2. Any VPS owned by ownerId
+ * 3. Any system/global VPS with is_backup_relay = true (relay fallback for any server)
+ */
+export async function findBackupRelayVps(ownerId?: string | null): Promise<VpsRecord | null> {
   const service = getSupabaseServiceClient();
-  const { data, error } = await service
+
+  if (ownerId) {
+    // 1. VPS with is_backup_relay = true owned by ownerId
+    const { data: preferred } = await service
+      .from('vps')
+      .select('id, name, host, port, username, credential, owner_id, created_at, is_backup_relay')
+      .eq('owner_id', ownerId)
+      .eq('is_backup_relay', true)
+      .limit(1)
+      .maybeSingle();
+    if (preferred) return preferred as VpsRecord;
+
+    // 2. Any VPS owned by ownerId
+    const { data: anyOwned } = await service
+      .from('vps')
+      .select('id, name, host, port, username, credential, owner_id, created_at, is_backup_relay')
+      .eq('owner_id', ownerId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (anyOwned) return anyOwned as VpsRecord;
+  }
+
+  // 3. Fallback: Any VPS with is_backup_relay = true (e.g. system relay set up by admin)
+  const { data: globalRelay } = await service
     .from('vps')
     .select('id, name, host, port, username, credential, owner_id, created_at, is_backup_relay')
-    .eq('owner_id', ownerId)
-    .order('is_backup_relay', { ascending: false })
+    .eq('is_backup_relay', true)
     .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle();
 
-  if (error || !data) return null;
-  return data as VpsRecord;
+  if (globalRelay) return globalRelay as VpsRecord;
+  return null;
 }
+
+/** Backward-compatible alias for findBackupRelayVps. */
+export const findOwnerVps = findBackupRelayVps;
 
 /** List metadata only; credentials are never selected for a browser-facing page. */
 export async function listVpsForUser(user: SessionUser): Promise<VpsListItem[]> {

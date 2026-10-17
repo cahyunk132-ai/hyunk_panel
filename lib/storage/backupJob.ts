@@ -6,8 +6,13 @@ import type {
   ServerRow,
   StorageProviderRow,
 } from '@/types';
-import { findOwnerVps } from '@/lib/vps/access';
-import { offloadBackupViaVpsNat } from '@/lib/vps/backupOffload';
+import { findBackupRelayVps, findOwnerVps } from '@/lib/vps/access';
+import {
+  startBackgroundBackupOffloadViaVps,
+  signBackupOffloadToken,
+  offloadBackupViaVpsNat,
+} from '@/lib/vps/backupOffload';
+import { getServerAppUrl } from '@/lib/utils/app-url';
 import { getGDriveBackupFolderId, findGDriveFileId, initGdriveResumableUpload } from '@/lib/storage/gdrive';
 import { getValidAccessToken } from '@/lib/storage/tokens';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
@@ -47,6 +52,8 @@ export interface BackupJobResult {
   ok: boolean;
   log_id?: string;
   backup_uuid?: string;
+  offloaded?: boolean;
+  message?: string;
   error?: string;
 }
 
@@ -259,102 +266,132 @@ export async function runBackupJob(
       );
     }
 
-    let uploadedFileId: string | null = null;
-    let uploadedFileName = fileName;
-    let uploadedSize = sizeFromWings;
-    let offloaded = false;
-
-    const uploadDirectlyThroughPanel = async (): Promise<void> => {
-      const download = await resolved.client.downloadBackupStream(
-        serverRow.uuid,
-        backupUuid,
-        schedule.created_by ?? SYSTEM_USER_UUID,
-      );
-      const reportedSize = Number(download.headers.get('content-length'));
-      const size =
-        sizeFromWings ??
-        (Number.isFinite(reportedSize) && reportedSize >= 0 ? reportedSize : undefined);
-      const uploaded = await uploadToProvider(
-        providerRow,
-        serverRow.name,
-        fileName,
-        download.body as ReadableStream<Uint8Array>,
-        size,
-        jobAbort.signal,
-      );
-      uploadedFileId = uploaded.fileId;
-      uploadedFileName = uploaded.fileName;
-      uploadedSize = uploaded.size ?? size ?? uploadedSize;
-    };
-
-    if (providerRow.provider === 'gdrive' && serverRow.owner_id && sizeFromWings !== undefined) {
-      const ownerVps = await findOwnerVps(serverRow.owner_id);
-      if (ownerVps) {
-        // Token, signed URL, and resumable session URL remain server-side. The
-        // VPS only receives them as quoted curl arguments for the transfer.
-        const accessToken = await getValidAccessToken(providerRow);
-        const folderId = await getGDriveBackupFolderId(
-          accessToken,
-          sanitizePathSegment(serverRow.name),
-        );
-        const wingsToken = createBackupDownloadToken(
-          {
-            nodeSecret: resolved.client.token,
-            serverUuid: serverRow.uuid,
-            userUuid: serverRow.owner_id,
-          },
-          backupUuid,
-        );
-        const wingsDownloadUrl = resolved.client.downloadBackupUrl(wingsToken);
-        const uploadUrl = await initGdriveResumableUpload(
-          accessToken,
-          fileName,
-          folderId,
-          sizeFromWings,
-        );
-
+    if (providerRow.provider === 'gdrive' && sizeFromWings !== undefined) {
+      const relayVps = await findBackupRelayVps(serverRow.owner_id);
+      if (relayVps) {
         try {
-          await offloadBackupViaVpsNat(
-            ownerVps,
-            wingsDownloadUrl,
-            uploadUrl,
+          const accessToken = await getValidAccessToken(providerRow);
+          const folderId = await getGDriveBackupFolderId(
+            accessToken,
+            sanitizePathSegment(serverRow.name),
+          );
+          const wingsToken = createBackupDownloadToken(
+            {
+              nodeSecret: resolved.client.token,
+              serverUuid: serverRow.uuid,
+              userUuid: serverRow.owner_id ?? SYSTEM_USER_UUID,
+            },
+            backupUuid,
+            14400, // 4 jam TTL untuk file besar
+          );
+          const wingsDownloadUrl = resolved.client.downloadBackupUrl(wingsToken);
+          const uploadUrl = await initGdriveResumableUpload(
+            accessToken,
+            fileName,
+            folderId,
             sizeFromWings,
           );
-          offloaded = true;
-          uploadedSize = sizeFromWings;
-          try {
-            uploadedFileId = await findGDriveFileId(accessToken, fileName, folderId);
-          } catch (lookupError) {
-            // The bytes are already safe in GDrive; a missing lookup ID should
-            // not turn a successful multi-GB transfer into a failed backup.
-            console.warn('[backup] GDrive offload completed but file ID lookup failed', {
-              serverId: serverRow.id,
-              error: lookupError instanceof Error ? lookupError.message : 'unknown error',
-            });
-          }
-          console.info('[backup] GDrive backup offloaded via owner VPS NAT', {
+
+          const callbackUrl = `${getServerAppUrl() || 'https://panel.wangstore.web.id'}/api/remote/backup-offload`;
+          const offloadToken = signBackupOffloadToken({
+            log_id: log.id,
+            server_id: serverRow.id,
+            server_uuid: serverRow.uuid,
+            backup_uuid: backupUuid,
+            schedule_id: schedule.id,
+            provider_id: providerRow.id,
+            file_name: fileName,
+            folder_id: folderId,
+            size_bytes: sizeFromWings,
+            owner_id: serverRow.owner_id,
+            user_id: userId,
+            trigger,
+          });
+
+          // Catat di database bahwa transfer sedang diproses oleh VPS Relay di latar belakang
+          await service
+            .from('backup_logs')
+            .update({
+              status: 'uploading',
+              size_bytes: sizeFromWings,
+              error_message: `Sedang ditransfer via VPS Relay (${relayVps.name}) di latar belakang...`,
+            })
+            .eq('id', log.id);
+
+          await startBackgroundBackupOffloadViaVps({
+            vps: relayVps,
+            wingsDownloadUrl,
+            gdriveUploadUrl: uploadUrl,
+            fileSizeBytes: sizeFromWings,
+            callbackUrl,
+            offloadToken,
+            logId: log.id,
+          });
+
+          console.info('[backup] GDrive backup offloaded in background via VPS relay', {
             serverId: serverRow.id,
-            vpsId: ownerVps.id,
+            vpsId: relayVps.id,
+            vpsName: relayVps.name,
             sizeBytes: sizeFromWings,
           });
+
+          // Return immediately! The VPS Relay continues in the background.
+          // /api/remote/backup-offload will handle status 'done' and cleanup the node archive.
+          return {
+            ok: true,
+            log_id: log.id,
+            backup_uuid: backupUuid,
+            offloaded: true,
+            message: `Transfer backup di-offload ke VPS Relay (${relayVps.name}) di latar belakang`,
+          };
         } catch (offloadError) {
-          console.warn('[backup] VPS NAT offload failed; falling back to panel stream', {
+          console.warn('[backup] Gagal memulai offload ke VPS Relay; mencoba fallback ke panel stream', {
             serverId: serverRow.id,
-            vpsId: ownerVps.id,
+            vpsId: relayVps.id,
             error: offloadError instanceof Error ? offloadError.message : 'unknown error',
           });
         }
       } else {
-        console.warn('[backup] No owner VPS NAT found; falling back to panel stream', {
+        console.warn('[backup] Tidak ditemukan VPS Relay untuk backup', {
           serverId: serverRow.id,
           ownerId: serverRow.owner_id,
         });
       }
     }
 
-    if (!offloaded) {
-      await uploadDirectlyThroughPanel();
+    // Jika tidak dapat di-offload ke VPS Relay dan ukuran file terlalu besar (> 2 GB)
+    if (sizeFromWings !== undefined && sizeFromWings > 2 * 1024 * 1024 * 1024) {
+      const sizeGb = (sizeFromWings / (1024 * 1024 * 1024)).toFixed(1);
+      return await fail(
+        `File backup berukuran ${sizeGb} GB melebihi batas kemampuan serverless (batas waktu 5 menit). Silakan daftarkan VPS di menu 'VPS' dan aktifkan 'Jadikan Backup Relay' agar transfer file besar dapat dijalankan di latar belakang.`,
+        { backup_uuid: backupUuid },
+      );
     }
+
+    let uploadedFileId: string | null = null;
+    let uploadedFileName = fileName;
+    let uploadedSize = sizeFromWings;
+
+    const download = await resolved.client.downloadBackupStream(
+      serverRow.uuid,
+      backupUuid,
+      schedule.created_by ?? SYSTEM_USER_UUID,
+    );
+    const reportedSize = Number(download.headers.get('content-length'));
+    const size =
+      sizeFromWings ??
+      (Number.isFinite(reportedSize) && reportedSize >= 0 ? reportedSize : undefined);
+    const uploaded = await uploadToProvider(
+      providerRow,
+      serverRow.name,
+      fileName,
+      download.body as ReadableStream<Uint8Array>,
+      size,
+      jobAbort.signal,
+    );
+    uploadedFileId = uploaded.fileId;
+    uploadedFileName = uploaded.fileName;
+    uploadedSize = uploaded.size ?? size ?? uploadedSize;
 
     // 6. Log done.
     const result = await finish({
@@ -429,7 +466,7 @@ export async function cleanupStaleBackupLogs(): Promise<{ recovered: number; err
 
   const { data: staleLogs, error } = await service
     .from('backup_logs')
-    .select('id, server_id, backup_uuid, status, started_at')
+    .select('id, server_id, backup_uuid, status, started_at, error_message')
     .in('status', ['pending', 'creating', 'uploading'])
     .is('completed_at', null)
     .lte('started_at', staleThreshold)
@@ -444,6 +481,16 @@ export async function cleanupStaleBackupLogs(): Promise<{ recovered: number; err
 
   for (const log of staleLogs) {
     try {
+      // Jika job ini sedang di-offload ke VPS Relay di latar belakang, berikan toleransi waktu hingga 4 jam.
+      const isRelayTransfer = (log.error_message ?? '').includes('VPS Relay');
+      const relayThresholdMs = 4 * 60 * 60 * 1000; // 4 jam
+      const logAgeMs = Date.now() - new Date(log.started_at).getTime();
+
+      if (isRelayTransfer && logAgeMs < relayThresholdMs) {
+        // Masih dalam batas wajar transfer VPS relay di latar belakang
+        continue;
+      }
+
       if (log.backup_uuid && log.server_id) {
         try {
           const { data: server } = await service
@@ -468,7 +515,9 @@ export async function cleanupStaleBackupLogs(): Promise<{ recovered: number; err
         .from('backup_logs')
         .update({
           status: 'failed',
-          error_message: 'Timeout: proses backup terhenti sebelum selesai (melebihi batas waktu serverless)',
+          error_message: isRelayTransfer
+            ? 'Timeout: transfer VPS Relay melebihi batas waktu 4 jam'
+            : 'Timeout: proses backup terhenti sebelum selesai (melebihi batas waktu serverless)',
           completed_at: new Date().toISOString(),
         })
         .eq('id', log.id);

@@ -531,6 +531,11 @@ export function BackupMonitor() {
                         <Badge tone={STATUS_TONES[statusKey]} spinning={running}>
                           {STATUS_LABELS[statusKey]}
                         </Badge>
+                        {running && log.error_message && (
+                          <p className="mt-1 max-w-[180px] truncate text-[10px] text-sky-400" title={log.error_message}>
+                            {log.error_message}
+                          </p>
+                        )}
                         {hasError && (
                           <button
                             type="button"
