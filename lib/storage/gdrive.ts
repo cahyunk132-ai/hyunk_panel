@@ -3,10 +3,13 @@ import 'server-only';
 /**
  * Google Drive storage provider.
  *
- * Upload memakai dua langkah agar file besar (bisa >1GB) tetap ter-stream
- * tanpa buffer di memory:
+ * Direct upload memakai dua langkah agar file besar (bisa >1GB) tetap
+ * ter-stream tanpa buffer di memory:
  *   1. POST /drive/v3/files (metadata: nama + folder parents) → dapat file ID
  *   2. PATCH /upload/drive/v3/files/{id}?uploadType=media (body = stream)
+ *
+ * Untuk backup yang di-offload, initGdriveResumableUpload() hanya membuat
+ * session URL; byte backup dikirim langsung oleh VPS NAT.
  *
  * Folder tujuan: "Hyunk Panel Backups/{server_name}/" (dibuat otomatis).
  * Scope OAuth `drive.file` cukup — panel hanya bisa mengakses file/folder
@@ -35,6 +38,14 @@ interface DriveFile {
   name?: string;
 }
 
+interface DriveFileWithCreatedAt extends DriveFile {
+  createdTime?: string;
+}
+
+function escapeDriveQueryValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 async function apiFetch(path: string, init: RequestInit & { token: string }): Promise<Response> {
   const { token, ...rest } = init;
   return fetch(`https://www.googleapis.com${path}`, {
@@ -47,7 +58,7 @@ async function apiFetch(path: string, init: RequestInit & { token: string }): Pr
 /** Cari folder berdasarkan nama (di dalam parent bila ada); buat bila belum ada. */
 async function ensureFolder(token: string, name: string, parentId?: string): Promise<string> {
   const q = [
-    `name='${name.replace(/'/g, "\\'")}'`,
+    `name='${escapeDriveQueryValue(name)}'`,
     `mimeType='application/vnd.google-apps.folder'`,
     'trashed=false',
     ...(parentId ? [`'${parentId}' in parents`] : []),
@@ -77,6 +88,73 @@ async function ensureFolder(token: string, name: string, parentId?: string): Pro
   return file.id;
 }
 
+/** Resolve the existing backup folder path without creating a file upload session. */
+export async function getGDriveBackupFolderId(token: string, serverName: string): Promise<string> {
+  const rootId = await ensureFolder(token, GDRIVE_ROOT_FOLDER);
+  return ensureFolder(token, serverName, rootId);
+}
+
+/**
+ * Create a Google Drive resumable upload session only. The backup bytes never
+ * pass through the panel process; the returned Location URL is consumed by
+ * the VPS NAT offload worker.
+ */
+export async function initGdriveResumableUpload(
+  accessToken: string,
+  filename: string,
+  folderId: string,
+  fileSizeBytes: number,
+): Promise<string> {
+  if (!filename.trim()) throw new Error('GDrive: nama file upload wajib diisi');
+  if (!folderId.trim()) throw new Error('GDrive: folder ID upload wajib diisi');
+  if (!Number.isSafeInteger(fileSizeBytes) || fileSizeBytes < 0) {
+    throw new Error('GDrive: ukuran file upload tidak valid');
+  }
+
+  const response = await apiFetch('/upload/drive/v3/files?uploadType=resumable', {
+    token: accessToken,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Upload-Content-Type': 'application/octet-stream',
+      'X-Upload-Content-Length': String(fileSizeBytes),
+    },
+    body: JSON.stringify({ name: filename, parents: [folderId] }),
+  });
+  if (response.status !== 200) {
+    const detail = (await response.text().catch(() => ''))
+      .replaceAll(accessToken, '[redacted]')
+      .slice(0, 300);
+    throw new Error(`GDrive: gagal membuat resumable upload session → ${response.status}: ${detail}`);
+  }
+
+  const uploadUrl = response.headers.get('location');
+  if (!uploadUrl) throw new Error('GDrive: response resumable upload tidak memiliki Location header');
+  return uploadUrl;
+}
+
+/** Find the newest file with this name in a backup folder after offload. */
+export async function findGDriveFileId(
+  accessToken: string,
+  filename: string,
+  folderId: string,
+): Promise<string | null> {
+  const query = [
+    `name='${escapeDriveQueryValue(filename)}'`,
+    `'${escapeDriveQueryValue(folderId)}' in parents`,
+    'trashed=false',
+  ].join(' and ');
+  const response = await apiFetch(
+    `/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,createdTime)&orderBy=createdTime%20desc&pageSize=1&spaces=drive`,
+    { token: accessToken, method: 'GET' },
+  );
+  if (!response.ok) {
+    throw new Error(`GDrive: gagal mencari file hasil offload → ${response.status}`);
+  }
+  const result = (await response.json()) as { files?: DriveFileWithCreatedAt[] };
+  return result.files?.[0]?.id ?? null;
+}
+
 /** Upload stream ke "Hyunk Panel Backups/{serverName}/{filename}". */
 export async function uploadToGDrive(
   token: string,
@@ -85,8 +163,7 @@ export async function uploadToGDrive(
   stream: ReadableStream<Uint8Array>,
   size?: number,
 ): Promise<GDriveUploadResult> {
-  const rootId = await ensureFolder(token, GDRIVE_ROOT_FOLDER);
-  const serverFolderId = await ensureFolder(token, serverName, rootId);
+  const serverFolderId = await getGDriveBackupFolderId(token, serverName);
 
   // 1. Metadata file (dapat ID lebih dulu).
   const metaRes = await apiFetch('/drive/v3/files', {

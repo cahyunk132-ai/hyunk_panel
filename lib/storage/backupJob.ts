@@ -6,10 +6,15 @@ import type {
   ServerRow,
   StorageProviderRow,
 } from '@/types';
+import { findOwnerVps } from '@/lib/vps/access';
+import { offloadBackupViaVpsNat } from '@/lib/vps/backupOffload';
+import { getGDriveBackupFolderId, findGDriveFileId, initGdriveResumableUpload } from '@/lib/storage/gdrive';
+import { getValidAccessToken } from '@/lib/storage/tokens';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
+import { createBackupDownloadToken } from '@/lib/wings/jwt';
 import { resolveServerWings, logActivity } from '@/lib/wings/resolve';
 import { computeNextRunAt } from './schedule';
-import { buildBackupFileName, uploadToProvider } from './index';
+import { buildBackupFileName, sanitizePathSegment, uploadToProvider } from './index';
 import { cleanupScheduleRetention } from '@/lib/billing/cleanupRetention';
 import { sendNotification } from '@/lib/notifications';
 
@@ -20,9 +25,9 @@ import { sendNotification } from '@/lib/notifications';
  *   - Admin         (POST /api/admin/backups/run)
  *
  * Alur: catat log → update jadwal → trigger backup ke Wings → tunggu laporan
- * hasil dari Wings (POST /api/remote/backups/{uuid}) → download streaming dari
- * node → upload streaming ke cloud storage → bersihkan backup di node →
- * enforce retention di cloud.
+ * hasil dari Wings (POST /api/remote/backups/{uuid}) → offload transfer GDrive
+ * melalui VPS NAT owner bila tersedia (fallback stream via panel) → bersihkan
+ * backup di node → enforce retention di cloud.
  */
 
 /** User UUID sistem untuk JWT download saat dipicu cron (tanpa user). */
@@ -193,33 +198,115 @@ export async function runBackupJob(
       });
     }
 
-    // 5. Download streaming dari Wings → upload streaming ke cloud storage.
+    // 5. Upload ke cloud. Untuk GDrive, transfer besar di-offload ke VPS NAT
+    // milik owner server agar stream tidak melewati batas waktu Vercel.
     await service.from('backup_logs').update({ status: 'uploading' }).eq('id', log.id);
-    const download = await resolved.client.downloadBackupStream(
-      serverRow.uuid,
-      backupUuid,
-      schedule.created_by ?? SYSTEM_USER_UUID,
-    );
-    const reportedSize = Number(download.headers.get('content-length'));
-    const size =
-      wingsBackup.size_bytes ??
-      (Number.isFinite(reportedSize) && reportedSize > 0 ? reportedSize : undefined);
+    const rawBackupSize = Number(wingsBackup.size_bytes);
+    const sizeFromWings =
+      Number.isSafeInteger(rawBackupSize) && rawBackupSize >= 0 ? rawBackupSize : undefined;
+    let uploadedFileId: string | null = null;
+    let uploadedFileName = fileName;
+    let uploadedSize = sizeFromWings;
+    let offloaded = false;
 
-    const uploaded = await uploadToProvider(
-      providerRow,
-      serverRow.name,
-      fileName,
-      download.body as ReadableStream<Uint8Array>,
-      size,
-    );
+    const uploadDirectlyThroughPanel = async (): Promise<void> => {
+      const download = await resolved.client.downloadBackupStream(
+        serverRow.uuid,
+        backupUuid,
+        schedule.created_by ?? SYSTEM_USER_UUID,
+      );
+      const reportedSize = Number(download.headers.get('content-length'));
+      const size =
+        sizeFromWings ??
+        (Number.isFinite(reportedSize) && reportedSize >= 0 ? reportedSize : undefined);
+      const uploaded = await uploadToProvider(
+        providerRow,
+        serverRow.name,
+        fileName,
+        download.body as ReadableStream<Uint8Array>,
+        size,
+      );
+      uploadedFileId = uploaded.fileId;
+      uploadedFileName = uploaded.fileName;
+      uploadedSize = uploaded.size ?? size ?? uploadedSize;
+    };
+
+    if (providerRow.provider === 'gdrive' && serverRow.owner_id && sizeFromWings !== undefined) {
+      const ownerVps = await findOwnerVps(serverRow.owner_id);
+      if (ownerVps) {
+        // Token, signed URL, and resumable session URL remain server-side. The
+        // VPS only receives them as quoted curl arguments for the transfer.
+        const accessToken = await getValidAccessToken(providerRow);
+        const folderId = await getGDriveBackupFolderId(
+          accessToken,
+          sanitizePathSegment(serverRow.name),
+        );
+        const wingsToken = createBackupDownloadToken(
+          {
+            nodeSecret: resolved.client.token,
+            serverUuid: serverRow.uuid,
+            userUuid: serverRow.owner_id,
+          },
+          backupUuid,
+        );
+        const wingsDownloadUrl = resolved.client.downloadBackupUrl(wingsToken);
+        const uploadUrl = await initGdriveResumableUpload(
+          accessToken,
+          fileName,
+          folderId,
+          sizeFromWings,
+        );
+
+        try {
+          await offloadBackupViaVpsNat(
+            ownerVps,
+            wingsDownloadUrl,
+            uploadUrl,
+            sizeFromWings,
+          );
+          offloaded = true;
+          uploadedSize = sizeFromWings;
+          try {
+            uploadedFileId = await findGDriveFileId(accessToken, fileName, folderId);
+          } catch (lookupError) {
+            // The bytes are already safe in GDrive; a missing lookup ID should
+            // not turn a successful multi-GB transfer into a failed backup.
+            console.warn('[backup] GDrive offload completed but file ID lookup failed', {
+              serverId: serverRow.id,
+              error: lookupError instanceof Error ? lookupError.message : 'unknown error',
+            });
+          }
+          console.info('[backup] GDrive backup offloaded via owner VPS NAT', {
+            serverId: serverRow.id,
+            vpsId: ownerVps.id,
+            sizeBytes: sizeFromWings,
+          });
+        } catch (offloadError) {
+          console.warn('[backup] VPS NAT offload failed; falling back to panel stream', {
+            serverId: serverRow.id,
+            vpsId: ownerVps.id,
+            error: offloadError instanceof Error ? offloadError.message : 'unknown error',
+          });
+        }
+      } else {
+        console.warn('[backup] No owner VPS NAT found; falling back to panel stream', {
+          serverId: serverRow.id,
+          ownerId: serverRow.owner_id,
+        });
+      }
+    }
+
+    if (!offloaded) {
+      await uploadDirectlyThroughPanel();
+    }
 
     // 6. Log done.
     const result = await finish({
       status: 'done',
       completed_at: new Date().toISOString(),
-      size_bytes: wingsBackup.size_bytes ?? uploaded.size ?? null,
-      storage_file_id: uploaded.fileId,
-      storage_file_name: uploaded.fileName,
+      size_bytes: uploadedSize ?? null,
+      storage_file_id: uploadedFileId,
+      storage_file_name: uploadedFileName,
       backup_uuid: backupUuid,
     });
 
@@ -248,7 +335,7 @@ export async function runBackupJob(
         backup_uuid: backupUuid,
         log_id: log.id,
         provider: providerRow.provider,
-        storage_file_name: uploaded.fileName,
+        storage_file_name: uploadedFileName,
       },
     });
 
