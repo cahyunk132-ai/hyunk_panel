@@ -69,6 +69,22 @@ export async function getVpsForUser(id: string, user: SessionUser): Promise<VpsR
   return vps;
 }
 
+/** Find the first NAT VPS owned by a server owner for server-side backup offload. */
+export async function findOwnerVps(ownerId: string): Promise<VpsRecord | null> {
+  if (!ownerId) return null;
+  const service = getSupabaseServiceClient();
+  const { data, error } = await service
+    .from('vps')
+    .select('id, name, host, port, username, credential, owner_id, created_at')
+    .eq('owner_id', ownerId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data as VpsRecord;
+}
+
 /** List metadata only; credentials are never selected for a browser-facing page. */
 export async function listVpsForUser(user: SessionUser): Promise<VpsListItem[]> {
   const service = getSupabaseServiceClient();
