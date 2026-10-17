@@ -104,6 +104,7 @@ export async function startBackgroundBackupOffloadViaVps(
   const safeUploadUrl = validateHttpsUrl(gdriveUploadUrl, 'GDrive upload URL');
   const safeCallbackUrl = validateHttpsUrl(callbackUrl, 'Callback URL');
   const safeLogId = logId.replace(/[^a-zA-Z0-9_-]/g, '');
+  const lastByte = Math.max(fileSizeBytes - 1, 0);
 
   const scriptContent = [
     '#!/usr/bin/env bash',
@@ -113,16 +114,21 @@ export async function startBackgroundBackupOffloadViaVps(
     '',
     `echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] Memulai transfer relay backup (${fileSizeBytes} bytes)"`,
     '',
-    '# 1. Stream dari Wings langsung ke GDrive Resumable Upload session',
-    `HTTP_CODE=$(curl -fsSL --retry 2 --retry-delay 5 --max-time 14400 ${shellSingleQuote(safeWingsUrl)} 2>>"$LOG_FILE" | curl -sS --max-time 14400 -X PUT ${shellSingleQuote(safeUploadUrl)} -H "Content-Type: application/octet-stream" -H "Content-Length: ${fileSizeBytes}" --data-binary @- -o /dev/null -w "%{http_code}" 2>>"$LOG_FILE")`,
+    '# 1. Stream dari Wings langsung ke GDrive Resumable Upload session secara murni streaming (tanpa buffer RAM, cegah OOM exit 137)',
+    `HTTP_CODE=$(curl -fsSL --retry 2 --retry-delay 5 --max-time 14400 ${shellSingleQuote(safeWingsUrl)} 2>>"$LOG_FILE" | curl -sS --max-time 14400 -T - ${shellSingleQuote(safeUploadUrl)} -H "Content-Type: application/octet-stream" -H "Content-Length: ${fileSizeBytes}" -H "Content-Range: bytes 0-${lastByte}/${fileSizeBytes}" -H "Transfer-Encoding:" -H "Expect:" -o /dev/null -w "%{http_code}" 2>>"$LOG_FILE")`,
     'PIPE_EXIT=$?',
     '',
     `echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] Stream selesai: HTTP_CODE=$HTTP_CODE, EXIT_CODE=$PIPE_EXIT"`,
     '',
+    'ERR_SNIPPET=""',
+    'if [ "$PIPE_EXIT" -ne 0 ] || [ "$HTTP_CODE" != "200" -a "$HTTP_CODE" != "201" ]; then',
+    '  ERR_SNIPPET=$(tail -n 10 "$LOG_FILE" 2>/dev/null | tr \'\\n\' \' \' | tr \'"\' "\'" | cut -c 1-250)',
+    'fi',
+    '',
     '# 2. Lapor status ke panel callback',
     `curl -fsSL -X POST ${shellSingleQuote(safeCallbackUrl)} \\`,
     '  -H "Content-Type: application/json" \\',
-    `  -d "{\\"token\\":\\"${offloadToken}\\",\\"http_code\\":\\"$HTTP_CODE\\",\\"exit_code\\":$PIPE_EXIT}" \\`,
+    `  -d "{\\"token\\":\\"${offloadToken}\\",\\"http_code\\":\\"$HTTP_CODE\\",\\"exit_code\\":$PIPE_EXIT,\\"error\\":\\"$ERR_SNIPPET\\"}" \\`,
     '  --retry 3 --retry-delay 5 --max-time 60',
     'CALLBACK_EXIT=$?',
     `echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] Callback selesai dengan EXIT_CODE=$CALLBACK_EXIT"`,
@@ -163,12 +169,13 @@ export async function offloadBackupViaVpsNat(
 
   const safeWingsUrl = validateHttpsUrl(wingsDownloadUrl, 'Wings download URL');
   const safeUploadUrl = validateHttpsUrl(gdriveUploadUrl, 'GDrive upload URL');
+  const lastByte = Math.max(fileSizeBytes - 1, 0);
 
   const pipeline = [
     'set -o pipefail',
-    `curl -fsSL --max-time 7200 ${shellSingleQuote(safeWingsUrl)} | curl -fsSL --max-time 7200 -X PUT ${shellSingleQuote(safeUploadUrl)}`,
-    `-H "Content-Type: application/octet-stream" -H "Content-Length: ${fileSizeBytes}"`,
-    '--data-binary @- -o /dev/null -w "%{http_code}"',
+    `curl -fsSL --max-time 7200 ${shellSingleQuote(safeWingsUrl)} | curl -fsSL --max-time 7200 -T - ${shellSingleQuote(safeUploadUrl)}`,
+    `-H "Content-Type: application/octet-stream" -H "Content-Length: ${fileSizeBytes}" -H "Content-Range: bytes 0-${lastByte}/${fileSizeBytes}" -H "Transfer-Encoding:" -H "Expect:"`,
+    '-o /dev/null -w "%{http_code}"',
   ].join(' ');
   const command = `bash -o pipefail -c ${shellSingleQuote(pipeline)}`;
   const result = await execVpsCommand(vps, command);

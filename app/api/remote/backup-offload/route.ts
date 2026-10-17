@@ -20,7 +20,7 @@ export const maxDuration = 120;
  * Autentikasi: HMAC token yang ditandatangani oleh panel saat mendispatch job.
  */
 export async function POST(request: NextRequest) {
-  let body: { token?: string; http_code?: string; exit_code?: number };
+  let body: { token?: string; http_code?: string; exit_code?: number; error?: string };
   try {
     body = await request.json();
   } catch {
@@ -176,8 +176,8 @@ export async function POST(request: NextRequest) {
 
     return Response.json({ ok: true, log_id });
   } else {
-    // Gagal
-    const errorMsg = `Transfer via VPS Relay gagal (HTTP ${httpCode || 'unknown'}, exit code ${exitCode})`;
+    const errorDetail = typeof body?.error === 'string' && body.error.trim() ? `: ${body.error.trim()}` : '';
+    const errorMsg = `Transfer via VPS Relay gagal (HTTP ${httpCode || 'unknown'}, exit code ${exitCode})${errorDetail}`;
     await service
       .from('backup_logs')
       .update({
