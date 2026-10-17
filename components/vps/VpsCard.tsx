@@ -66,6 +66,18 @@ export function VpsCard({
           <span aria-hidden="true">📁</span>
           Files
         </Link>
+        <Link
+          href={`/vps/${vps.id}/pm2`}
+          className="inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border border-line bg-base-700 px-3 py-2 text-xs font-semibold text-ink-muted transition-colors hover:border-accent/40 hover:text-accent"
+        >
+          PM2
+        </Link>
+        <Link
+          href={`/vps/${vps.id}/deploy`}
+          className="inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border border-line bg-base-700 px-3 py-2 text-xs font-semibold text-ink-muted transition-colors hover:border-accent/40 hover:text-accent"
+        >
+          Deploy
+        </Link>
         {canManage && (
           <>
             <Button type="button" size="sm" variant="secondary" onClick={onEdit}>
