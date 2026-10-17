@@ -9,7 +9,7 @@ import { logActivity } from '@/lib/wings/resolve';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const PUBLIC_VPS_FIELDS = 'id, name, host, port, username, owner_id, created_at';
+const PUBLIC_VPS_FIELDS = 'id, name, host, port, username, owner_id, created_at, is_backup_relay';
 
 type RouteContext = { params: { id: string } };
 
@@ -63,6 +63,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
       username: vps.username,
       owner_id: vps.owner_id,
       created_at: vps.created_at,
+      is_backup_relay: vps.is_backup_relay,
     },
   });
 }

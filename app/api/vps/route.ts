@@ -9,7 +9,7 @@ import { logActivity } from '@/lib/wings/resolve';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const PUBLIC_VPS_FIELDS = 'id, name, host, port, username, owner_id, created_at';
+const PUBLIC_VPS_FIELDS = 'id, name, host, port, username, owner_id, created_at, is_backup_relay';
 
 /** List the VPS visible to the current user without exposing credentials. */
 export async function GET() {

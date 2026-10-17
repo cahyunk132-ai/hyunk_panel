@@ -84,6 +84,7 @@ export interface VpsListItem {
   port: number;
   username: string;
   owner_id: string | null;
+  is_backup_relay: boolean;
   created_at?: string;
 }
 

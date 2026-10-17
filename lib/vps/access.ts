@@ -16,6 +16,7 @@ export interface VpsRecord {
   /** AES-256-GCM encrypted credential. Never pass this to a client component. */
   credential: string;
   owner_id: string | null;
+  is_backup_relay: boolean;
   created_at?: string;
 }
 
@@ -32,6 +33,7 @@ export function toVpsListItem(vps: VpsRecord): VpsListItem {
     port: vps.port,
     username: vps.username,
     owner_id: vps.owner_id,
+    is_backup_relay: vps.is_backup_relay,
     created_at: vps.created_at,
   };
 }
@@ -49,7 +51,7 @@ export async function getVpsForUser(id: string, user: SessionUser): Promise<VpsR
   const service = getSupabaseServiceClient();
   const { data, error } = await service
     .from('vps')
-    .select('id, name, host, port, username, credential, owner_id, created_at')
+    .select('id, name, host, port, username, credential, owner_id, created_at, is_backup_relay')
     .eq('id', id)
     .maybeSingle();
 
@@ -69,14 +71,15 @@ export async function getVpsForUser(id: string, user: SessionUser): Promise<VpsR
   return vps;
 }
 
-/** Find the first NAT VPS owned by a server owner for server-side backup offload. */
+/** Find the preferred backup relay VPS owned by a server owner. */
 export async function findOwnerVps(ownerId: string): Promise<VpsRecord | null> {
   if (!ownerId) return null;
   const service = getSupabaseServiceClient();
   const { data, error } = await service
     .from('vps')
-    .select('id, name, host, port, username, credential, owner_id, created_at')
+    .select('id, name, host, port, username, credential, owner_id, created_at, is_backup_relay')
     .eq('owner_id', ownerId)
+    .order('is_backup_relay', { ascending: false })
     .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle();
@@ -90,7 +93,7 @@ export async function listVpsForUser(user: SessionUser): Promise<VpsListItem[]> 
   const service = getSupabaseServiceClient();
   let query = service
     .from('vps')
-    .select('id, name, host, port, username, owner_id, created_at')
+    .select('id, name, host, port, username, owner_id, created_at, is_backup_relay')
     .order('created_at', { ascending: true });
 
   if (!canSeeAllVps(user)) {

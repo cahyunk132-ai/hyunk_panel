@@ -70,6 +70,7 @@ export function VpsManager({
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [relayLoadingId, setRelayLoadingId] = useState<string | null>(null);
 
   const canManage = (vps: VpsListItem) => canManageAll || vps.owner_id === currentUserId;
 
@@ -176,6 +177,37 @@ export function VpsManager({
     }
   }
 
+  async function toggleRelay(vps: VpsListItem) {
+    if (!canManage(vps) || relayLoadingId) return;
+
+    const enabled = !vps.is_backup_relay;
+    setRelayLoadingId(vps.id);
+    try {
+      const response = await fetch(`/api/vps/${encodeURIComponent(vps.id)}/relay`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      const body: unknown = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(getErrorMessage(body, 'Backup relay gagal diperbarui.'));
+
+      setVpsList((current) =>
+        enabled
+          ? current.map((item) =>
+              item.owner_id === vps.owner_id
+                ? { ...item, is_backup_relay: item.id === vps.id }
+                : item,
+            )
+          : current.map((item) => (item.id === vps.id ? { ...item, is_backup_relay: false } : item)),
+      );
+      toast.success(enabled ? `${vps.name} dijadikan Backup Relay.` : `${vps.name} dihapus sebagai Backup Relay.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Backup relay gagal diperbarui.');
+    } finally {
+      setRelayLoadingId(null);
+    }
+  }
+
   return (
     <>
       <div className="flex items-center justify-between gap-3">
@@ -208,7 +240,9 @@ export function VpsManager({
               isOwner={vps.owner_id === currentUserId}
               onEdit={() => openEdit(vps)}
               onDelete={() => void deleteVps(vps)}
+              onToggleRelay={() => void toggleRelay(vps)}
               deleting={deletingId === vps.id}
+              relayLoading={relayLoadingId === vps.id}
             />
           ))}
         </div>
