@@ -8,6 +8,7 @@ import {
   shellQuote,
   validateAppName,
   validateDeployPath,
+  withPath,
   validateInterpreter,
   validateLineCount,
   validateScriptPath,
@@ -80,7 +81,7 @@ export function parsePm2Processes(output: string): Pm2Process[] {
 }
 
 export async function getPm2Processes(vps: VpsRecord): Promise<Pm2Process[]> {
-  const result = await execVpsCommand(vps, 'pm2 jlist');
+  const result = await execVpsCommand(vps, withPath('pm2 jlist'));
   const output = assertCommandSucceeded(result, 'Gagal membaca daftar proses PM2');
   return parsePm2Processes(output);
 }
@@ -93,11 +94,11 @@ export async function runPm2Action(vps: VpsRecord, action: Pm2Action, name?: unk
   const target = name === undefined || name === null || name === '' ? undefined : pm2Target(name);
   if (!target && action !== 'flush') throw new Error(`Nama proses wajib untuk action ${action}`);
   const commands: Record<Pm2Action, string> = {
-    start: `pm2 start ${target ?? ''}`,
-    stop: `pm2 stop ${target ?? ''}`,
-    restart: `pm2 restart ${target ?? ''}`,
-    delete: `pm2 delete ${target ?? ''} && pm2 save`,
-    flush: `pm2 flush${target ? ` ${target}` : ''}`,
+    start: withPath(`pm2 start ${target ?? ''}`),
+    stop: withPath(`pm2 stop ${target ?? ''}`),
+    restart: withPath(`pm2 restart ${target ?? ''}`),
+    delete: withPath(`pm2 delete ${target ?? ''} && pm2 save`),
+    flush: withPath(`pm2 flush${target ? ` ${target}` : ''}`),
   };
   const result = await execVpsCommand(vps, commands[action]);
   return assertCommandSucceeded(result, `PM2 gagal menjalankan action ${action}`);
@@ -116,7 +117,10 @@ export async function createPm2Process(
     interpreter ? `--interpreter ${shellQuote(interpreter)}` : '',
     cwd ? `--cwd ${shellQuote(cwd)}` : '',
   ].filter(Boolean);
-  const result = await execVpsCommand(vps, `pm2 start ${script} ${options.join(' ')} && pm2 save`);
+  const result = await execVpsCommand(
+    vps,
+    withPath(`pm2 start ${script} ${options.join(' ')} && pm2 save`),
+  );
   return assertCommandSucceeded(result, 'Gagal membuat proses PM2');
 }
 
@@ -131,7 +135,10 @@ function splitLogLines(output: string, lines: number): string[] {
 export async function getPm2Logs(vps: VpsRecord, name: unknown, requestedLines: unknown): Promise<string[]> {
   const safeName = validateAppName(name);
   const lines = validateLineCount(requestedLines);
-  const result = await execVpsCommand(vps, `pm2 logs ${shellQuote(safeName)} --lines ${lines} --nostream`);
+  const result = await execVpsCommand(
+    vps,
+    withPath(`pm2 logs ${shellQuote(safeName)} --lines ${lines} --nostream`),
+  );
   const combined = [result.stdout, result.stderr].filter(Boolean).join('\n');
   if (result.code === 0 && combined.trim()) return splitLogLines(combined, lines);
 

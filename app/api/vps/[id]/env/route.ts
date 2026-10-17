@@ -13,6 +13,7 @@ import {
   getDefaultDeployPath,
   shellQuote,
   validateAppName,
+  withPath,
   validateDeployPath,
 } from '@/lib/vps/commands';
 
@@ -67,7 +68,10 @@ export async function POST(request: Request, { params }: { params: { id: string 
     );
     await writeVpsEnv(access.vps, deployPath, values);
 
-    const restart = await execVpsCommand(access.vps, `pm2 restart ${shellQuote(appName)}`);
+    const restart = await execVpsCommand(
+      access.vps,
+      withPath(`pm2 restart ${shellQuote(appName)}`),
+    );
     assertCommandSucceeded(restart, 'Environment tersimpan, tetapi PM2 gagal direstart');
     return Response.json({ success: true, env: maskEnv(values) });
   } catch (error) {

@@ -11,6 +11,15 @@ export function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
+/**
+ * Non-interactive SSH sessions often do not source the user's profile. PM2
+ * installed by npm or a global package manager may therefore be absent from
+ * PATH unless the common binary directories are added explicitly.
+ */
+export function withPath(command: string): string {
+  return `export PATH=$PATH:/usr/local/bin:/usr/local/sbin:/root/.npm-global/bin:$(npm root -g 2>/dev/null | head -1)/../.bin 2>/dev/null; ${command}`;
+}
+
 export function validateAppName(value: unknown): string {
   if (typeof value !== 'string' || !APP_NAME_RE.test(value)) {
     throw new Error('Nama app hanya boleh berisi alphanumeric, dash, atau underscore (maks. 64 karakter)');
