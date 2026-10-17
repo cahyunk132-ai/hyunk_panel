@@ -11,6 +11,8 @@ const MAX_COMMAND_OUTPUT_BYTES = 512 * 1024;
 export const MAX_FILE_READ_BYTES = 2 * 1024 * 1024;
 export const MAX_FILE_UPLOAD_BYTES = 10 * 1024 * 1024;
 export const MAX_FILE_DOWNLOAD_BYTES = 25 * 1024 * 1024;
+export const MAX_DEPLOY_UPLOAD_BYTES = 100 * 1024 * 1024;
+const MAX_STREAM_COMMAND_OUTPUT_BYTES = 4 * 1024 * 1024;
 
 export interface VpsCommandResult {
   stdout: string;
@@ -128,7 +130,66 @@ export async function execVpsCommand(vps: VpsRecord, command: string): Promise<V
   );
 }
 
-async function withSftp<T>(vps: VpsRecord, operation: (sftp: SftpClient) => Promise<T>): Promise<T> {
+/** Execute a command while forwarding stdout/stderr chunks to a server-side callback. */
+export async function runVpsCommand(
+  vps: VpsRecord,
+  command: string,
+  onOutput?: (chunk: string, channel: 'stdout' | 'stderr') => void,
+): Promise<VpsCommandResult> {
+  return withSsh(vps, (client) =>
+    new Promise<VpsCommandResult>((resolve, reject) => {
+      client.exec(command, (error, stream: ClientChannel) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        const stdout: Buffer[] = [];
+        const stderr: Buffer[] = [];
+        const totalBytes = { value: 0 };
+        let outputTooLarge = false;
+        const handleChunk = (chunk: Buffer | string, channel: 'stdout' | 'stderr') => {
+          try {
+            const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+            totalBytes.value += buffer.byteLength;
+            if (totalBytes.value > MAX_STREAM_COMMAND_OUTPUT_BYTES) {
+              throw new Error('Output command terlalu besar');
+            }
+            if (channel === 'stdout') stdout.push(buffer);
+            else stderr.push(buffer);
+            onOutput?.(buffer.toString('utf8'), channel);
+          } catch {
+            outputTooLarge = true;
+            stream.destroy();
+          }
+        };
+
+        stream.on('data', (chunk: Buffer | string) => handleChunk(chunk, 'stdout'));
+        stream.stderr.on('data', (chunk: Buffer | string) => handleChunk(chunk, 'stderr'));
+        stream.on('error', (streamError: Error) => {
+          if (!outputTooLarge) reject(streamError);
+        });
+        stream.on('close', (code: number | null, signal?: string) => {
+          if (outputTooLarge) {
+            reject(new Error('Output command terlalu besar'));
+            return;
+          }
+          resolve({
+            stdout: Buffer.concat(stdout).toString('utf8'),
+            stderr: Buffer.concat(stderr).toString('utf8'),
+            code,
+            signal,
+          });
+        });
+      });
+    }),
+  );
+}
+
+/** Backward-compatible name for server-side command execution helpers. */
+export const runCommand = runVpsCommand;
+
+export async function withSftp<T>(vps: VpsRecord, operation: (sftp: SftpClient) => Promise<T>): Promise<T> {
   const sftp = new SftpClient();
   await sftp.connect(connectionConfig(vps));
   try {
@@ -219,11 +280,24 @@ export async function renameVpsPath(vps: VpsRecord, fromPath: string, toPath: st
   });
 }
 
-export async function uploadVpsFile(vps: VpsRecord, filePath: string, content: Buffer): Promise<void> {
-  if (content.byteLength > MAX_FILE_UPLOAD_BYTES) {
-    throw new Error(`File terlalu besar (maksimal ${MAX_FILE_UPLOAD_BYTES} byte)`);
+export async function uploadVpsFileWithLimit(
+  vps: VpsRecord,
+  filePath: string,
+  content: Buffer,
+  maxBytes: number,
+): Promise<void> {
+  if (content.byteLength > maxBytes) {
+    throw new Error(`File terlalu besar (maksimal ${maxBytes} byte)`);
   }
   await withSftp(vps, async (sftp) => {
     await sftp.put(content, normalizeVpsPath(filePath));
   });
+}
+
+export async function uploadVpsFile(vps: VpsRecord, filePath: string, content: Buffer): Promise<void> {
+  await uploadVpsFileWithLimit(vps, filePath, content, MAX_FILE_UPLOAD_BYTES);
+}
+
+export async function uploadVpsDeployArchive(vps: VpsRecord, filePath: string, content: Buffer): Promise<void> {
+  await uploadVpsFileWithLimit(vps, filePath, content, MAX_DEPLOY_UPLOAD_BYTES);
 }
