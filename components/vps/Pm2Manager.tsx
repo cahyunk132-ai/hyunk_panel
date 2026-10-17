@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -65,6 +65,8 @@ function formatMemory(value: number): string {
 export function Pm2Manager({ vpsId, canManage }: { vpsId: string; canManage: boolean }) {
   const [processes, setProcesses] = useState<Pm2Process[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState('Menginstall PM2...');
+  const firstLoadRef = useRef(true);
   const [error, setError] = useState<string | null>(null);
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [flushing, setFlushing] = useState(false);
@@ -81,7 +83,10 @@ export function Pm2Manager({ vpsId, canManage }: { vpsId: string; canManage: boo
   const [ecosystemSaving, setEcosystemSaving] = useState(false);
 
   const refresh = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
+    if (!silent) {
+      setLoading(true);
+      setLoadingMessage(firstLoadRef.current ? 'Menginstall PM2...' : 'Memuat proses PM2...');
+    }
     try {
       const response = await fetch(`/api/vps/${encodeURIComponent(vpsId)}/pm2`, { cache: 'no-store' });
       const body: unknown = await response.json().catch(() => ({}));
@@ -93,7 +98,10 @@ export function Pm2Manager({ vpsId, canManage }: { vpsId: string; canManage: boo
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Gagal membaca proses PM2.');
     } finally {
-      if (!silent) setLoading(false);
+      if (!silent) {
+        setLoading(false);
+        firstLoadRef.current = false;
+      }
     }
   }, [vpsId]);
 
@@ -264,7 +272,7 @@ export function Pm2Manager({ vpsId, canManage }: { vpsId: string; canManage: boo
           </div>
         )}
         {loading && processes.length === 0 ? (
-          <div className="px-5 py-12 text-center text-sm text-ink-muted">Memuat proses PM2…</div>
+          <div className="px-5 py-12 text-center text-sm text-ink-muted">{loadingMessage}</div>
         ) : processes.length === 0 ? (
           <div className="px-5 py-12 text-center text-sm text-ink-muted">
             Tidak ada proses PM2 atau PM2 belum terpasang di VPS.
