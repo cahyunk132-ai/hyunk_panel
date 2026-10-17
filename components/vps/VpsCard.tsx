@@ -13,14 +13,18 @@ export function VpsCard({
   isOwner,
   onEdit,
   onDelete,
+  onToggleRelay,
   deleting = false,
+  relayLoading = false,
 }: {
   vps: VpsListItem;
   canManage: boolean;
   isOwner: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  onToggleRelay: () => void;
   deleting?: boolean;
+  relayLoading?: boolean;
 }) {
   return (
     <Card className="flex h-full flex-col px-5 py-4 transition-colors hover:border-accent/30">
@@ -31,9 +35,16 @@ export function VpsCard({
             {vps.host}:{vps.port}
           </p>
         </div>
-        <Badge tone={isOwner ? 'accent' : 'gray'}>
-          {isOwner ? 'Milik Anda' : canManage ? 'Dikelola admin' : 'Dibagikan'}
-        </Badge>
+        <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+          <Badge tone={isOwner ? 'accent' : 'gray'}>
+            {isOwner ? 'Milik Anda' : canManage ? 'Dikelola admin' : 'Dibagikan'}
+          </Badge>
+          {vps.is_backup_relay && (
+            <span title="VPS ini digunakan untuk transfer backup besar langsung ke cloud, melewati batas waktu panel">
+              <Badge tone="violet">Backup Relay</Badge>
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 text-[11px]">
@@ -80,6 +91,19 @@ export function VpsCard({
         </Link>
         {canManage && (
           <>
+            {vps.owner_id && (
+              <Button
+                type="button"
+                size="sm"
+                variant={vps.is_backup_relay ? 'danger' : 'secondary'}
+                onClick={onToggleRelay}
+                loading={relayLoading}
+                title="VPS ini digunakan untuk transfer backup besar langsung ke cloud, melewati batas waktu panel"
+                aria-label={vps.is_backup_relay ? `Hapus ${vps.name} sebagai backup relay` : `Jadikan ${vps.name} sebagai backup relay`}
+              >
+                {vps.is_backup_relay ? 'Hapus sebagai Relay' : 'Jadikan Backup Relay'}
+              </Button>
+            )}
             <Button type="button" size="sm" variant="secondary" onClick={onEdit}>
               Edit
             </Button>
