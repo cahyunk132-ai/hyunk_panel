@@ -13,6 +13,7 @@ import { getValidAccessToken } from '@/lib/storage/tokens';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { createBackupDownloadToken } from '@/lib/wings/jwt';
 import { resolveServerWings, logActivity } from '@/lib/wings/resolve';
+import type { WingsClient } from '@/lib/wings/client';
 import { computeNextRunAt } from './schedule';
 import { buildBackupFileName, sanitizePathSegment, uploadToProvider } from './index';
 import { cleanupScheduleRetention } from '@/lib/billing/cleanupRetention';
@@ -37,6 +38,8 @@ export const SYSTEM_USER_UUID = '00000000-0000-0000-0000-000000000000';
 export const BACKUP_POLL_INTERVAL_MS = 5_000;
 /** Batas waktu menunggu wings selesai membuat backup. */
 export const BACKUP_POLL_TIMEOUT_MS = 240_000;
+/** Batas waktu total satu job backup agar tidak di-hard-kill oleh runtime serverless Vercel (300s). */
+export const BACKUP_JOB_TIMEOUT_MS = 250_000;
 
 export type BackupJobTrigger = 'cron' | 'manual' | 'admin';
 
@@ -61,13 +64,28 @@ export async function runBackupJob(
   userId: string | null = null,
 ): Promise<BackupJobResult> {
   const service = getSupabaseServiceClient();
+  const jobStartedAt = Date.now();
+  const jobAbort = new AbortController();
+  const timeoutTimer = setTimeout(() => {
+    jobAbort.abort(
+      new Error(
+        'Batas waktu eksekusi backup tercapai (serverless timeout 250 detik). Transfer file terlalu lama. Disarankan menggunakan VPS Backup Relay.',
+      ),
+    );
+  }, BACKUP_JOB_TIMEOUT_MS);
+
+  let activeBackupUuid: string | null = null;
+  let activeWingsClient: WingsClient | null = null;
 
   const { data: server } = await service
     .from('servers')
     .select('*')
     .eq('id', schedule.server_id)
     .maybeSingle();
-  if (!server) throw new Error('Server untuk jadwal backup tidak ditemukan');
+  if (!server) {
+    clearTimeout(timeoutTimer);
+    throw new Error('Server untuk jadwal backup tidak ditemukan');
+  }
   const serverRow = server as ServerRow;
 
   const { data: provider } = await service
@@ -75,9 +93,13 @@ export async function runBackupJob(
     .select('*')
     .eq('id', schedule.storage_provider_id)
     .maybeSingle();
-  if (!provider) throw new Error('Storage provider untuk jadwal backup tidak ditemukan');
+  if (!provider) {
+    clearTimeout(timeoutTimer);
+    throw new Error('Storage provider untuk jadwal backup tidak ditemukan');
+  }
   const providerRow = provider as StorageProviderRow;
   if (!providerRow.is_active) {
+    clearTimeout(timeoutTimer);
     throw new Error(`Storage provider "${providerRow.name}" sedang nonaktif`);
   }
 
@@ -93,6 +115,7 @@ export async function runBackupJob(
     .select('*')
     .single();
   if (logErr || !logRow) {
+    clearTimeout(timeoutTimer);
     throw new Error(`Gagal mencatat backup log: ${logErr?.message ?? 'unknown'}`);
   }
   const log = logRow as BackupLogRow;
@@ -111,6 +134,21 @@ export async function runBackupJob(
     message: string,
     patch: Partial<BackupLogRow> = {},
   ): Promise<BackupJobResult> => {
+    // Bersihkan file arsip sementara di Wings node jika backup sempat dibuat
+    const targetUuid = patch.backup_uuid ?? activeBackupUuid;
+    if (targetUuid && activeWingsClient && serverRow.uuid) {
+      try {
+        await activeWingsClient.deleteBackup(serverRow.uuid, targetUuid);
+      } catch {
+        // best effort
+      }
+      try {
+        await service.from('backups').delete().eq('uuid', targetUuid);
+      } catch {
+        // best effort
+      }
+    }
+
     const result = await finish({
       status: 'failed',
       error_message: message,
@@ -147,8 +185,10 @@ export async function runBackupJob(
     if (resolved instanceof Response) {
       return await fail('Node untuk server ini tidak tersedia');
     }
+    activeWingsClient = resolved.client;
 
     const backupUuid = crypto.randomUUID();
+    activeBackupUuid = backupUuid;
     const fileName = buildBackupFileName(serverRow.name);
     await service.from('backups').insert({
       server_id: serverRow.id,
@@ -200,10 +240,25 @@ export async function runBackupJob(
 
     // 5. Upload ke cloud. Untuk GDrive, transfer besar di-offload ke VPS NAT
     // milik owner server agar stream tidak melewati batas waktu Vercel.
-    await service.from('backup_logs').update({ status: 'uploading' }).eq('id', log.id);
     const rawBackupSize = Number(wingsBackup.size_bytes);
     const sizeFromWings =
       Number.isSafeInteger(rawBackupSize) && rawBackupSize >= 0 ? rawBackupSize : undefined;
+
+    // Catat status uploading beserta ukuran dari Wings agar UI langsung menampilkan ukuran (bukan '—')
+    await service
+      .from('backup_logs')
+      .update({ status: 'uploading', size_bytes: sizeFromWings ?? null })
+      .eq('id', log.id);
+
+    // Cek sisa waktu eksekusi sebelum batas timeout serverless tercapai
+    const timeRemainingMs = BACKUP_JOB_TIMEOUT_MS - (Date.now() - jobStartedAt);
+    if (timeRemainingMs < 25_000) {
+      return await fail(
+        `Waktu pembuatan backup di node memakan waktu terlalu lama (${Math.round((Date.now() - jobStartedAt) / 1000)}s); sisa waktu serverless tidak mencukupi untuk transfer ke cloud. Disarankan menggunakan VPS Backup Relay.`,
+        { backup_uuid: backupUuid },
+      );
+    }
+
     let uploadedFileId: string | null = null;
     let uploadedFileName = fileName;
     let uploadedSize = sizeFromWings;
@@ -225,6 +280,7 @@ export async function runBackupJob(
         fileName,
         download.body as ReadableStream<Uint8Array>,
         size,
+        jobAbort.signal,
       );
       uploadedFileId = uploaded.fileId;
       uploadedFileName = uploaded.fileName;
@@ -352,5 +408,76 @@ export async function runBackupJob(
     return result;
   } catch (err) {
     return await fail(err instanceof Error ? err.message : 'Error tidak diketahui');
+  } finally {
+    clearTimeout(timeoutTimer);
   }
+}
+
+/**
+ * Auto-recovery untuk backup log yang macet (zombie).
+ *
+ * Bila fungsi serverless mati paksa (hard kill / timeout platform), baris di
+ * `backup_logs` bisa tertinggal di status 'pending', 'creating', atau 'uploading'
+ * tanpa completed_at. Fungsi ini mendeteksi log yang macet > 15 menit, menandainya
+ * sebagai failed, dan membersihkan sisa arsip backup di node (bila ada).
+ */
+export async function cleanupStaleBackupLogs(): Promise<{ recovered: number; errors: string[] }> {
+  const service = getSupabaseServiceClient();
+  // Threshold: jika sudah > 15 menit masih pending/creating/uploading,
+  // dipastikan sudah mati karena batas maxDuration serverless adalah 5 menit.
+  const staleThreshold = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+
+  const { data: staleLogs, error } = await service
+    .from('backup_logs')
+    .select('id, server_id, backup_uuid, status, started_at')
+    .in('status', ['pending', 'creating', 'uploading'])
+    .is('completed_at', null)
+    .lte('started_at', staleThreshold)
+    .limit(50);
+
+  if (error || !staleLogs || staleLogs.length === 0) {
+    return { recovered: 0, errors: [] };
+  }
+
+  let recovered = 0;
+  const errors: string[] = [];
+
+  for (const log of staleLogs) {
+    try {
+      if (log.backup_uuid && log.server_id) {
+        try {
+          const { data: server } = await service
+            .from('servers')
+            .select('*')
+            .eq('id', log.server_id)
+            .maybeSingle();
+
+          if (server) {
+            const resolved = await resolveServerWings(server as ServerRow);
+            if (!(resolved instanceof Response)) {
+              await resolved.client.deleteBackup(server.uuid, log.backup_uuid).catch(() => undefined);
+            }
+          }
+          await service.from('backups').delete().eq('uuid', log.backup_uuid);
+        } catch {
+          // best-effort cleanup node
+        }
+      }
+
+      await service
+        .from('backup_logs')
+        .update({
+          status: 'failed',
+          error_message: 'Timeout: proses backup terhenti sebelum selesai (melebihi batas waktu serverless)',
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', log.id);
+
+      recovered++;
+    } catch (err) {
+      errors.push(`Log ${log.id}: ${err instanceof Error ? err.message : 'unknown error'}`);
+    }
+  }
+
+  return { recovered, errors };
 }

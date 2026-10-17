@@ -9,6 +9,7 @@ import { Input, Select } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/Spinner';
 import { PROVIDER_META, PROVIDER_ORDER } from '@/lib/storage/provider-meta';
 import { formatBytes, formatRelativeTime, formatUptime } from '@/lib/utils/format';
+import { toast } from '@/lib/utils/toast';
 import type {
   AdminBackupLogRow,
   AdminBackupLogsResponse,
@@ -128,6 +129,8 @@ export function BackupMonitor() {
   const [tick, setTick] = useState(0);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [cleaningStale, setCleaningStale] = useState(false);
 
   // Debounce search supaya tidak nembak API tiap ketikan.
   useEffect(() => {
@@ -243,6 +246,39 @@ export function BackupMonitor() {
             <span className={autoRefresh ? 'dot-pulse text-emerald-400' : 'text-ink-faint'}>●</span>
             Auto 30s
           </button>
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={cleaningStale}
+            onClick={async () => {
+              setCleaningStale(true);
+              try {
+                const res = await fetch('/api/admin/backup-logs', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'cleanup_stale' }),
+                });
+                if (res.ok) {
+                  const json = (await res.json()) as { recovered?: number };
+                  setTick((v) => v + 1);
+                  if (Number(json.recovered) > 0) {
+                    toast.success(`${json.recovered} log backup macet berhasil dipulihkan`);
+                  } else {
+                    toast.info('Tidak ada log backup yang macet');
+                  }
+                } else {
+                  toast.error('Gagal membersihkan log macet');
+                }
+              } catch {
+                toast.error('Gagal menghubungi server');
+              } finally {
+                setCleaningStale(false);
+              }
+            }}
+            title="Deteksi dan pulihkan backup yang macet lebih dari 15 menit"
+          >
+            Bersihkan Stale
+          </Button>
           <Button size="sm" variant="secondary" onClick={() => setTick((v) => v + 1)} loading={refreshing}>
             {refreshing ? 'Memuat…' : '⟳ Refresh'}
           </Button>
@@ -558,6 +594,39 @@ export function BackupMonitor() {
                             />
                             <Detail label="Ukuran" value={formatBytes(log.size_bytes)} mono />
                           </div>
+                          {running && (
+                            <div className="mt-3 flex items-center justify-end border-t border-line-soft/40 pt-2.5">
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                loading={cancellingId === log.id}
+                                onClick={async (event) => {
+                                  event.stopPropagation();
+                                  if (!confirm('Tandai backup ini sebagai gagal dan bersihkan file sementara di node?')) return;
+                                  setCancellingId(log.id);
+                                  try {
+                                    const res = await fetch('/api/admin/backup-logs', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ action: 'mark_failed', log_id: log.id }),
+                                    });
+                                    if (res.ok) {
+                                      toast.success('Backup berhasil ditandai gagal');
+                                      setTick((v) => v + 1);
+                                    } else {
+                                      toast.error('Gagal menandai backup');
+                                    }
+                                  } catch {
+                                    toast.error('Gagal menghubungi server');
+                                  } finally {
+                                    setCancellingId(null);
+                                  }
+                                }}
+                              >
+                                Batalkan / Tandai Gagal
+                              </Button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     )}

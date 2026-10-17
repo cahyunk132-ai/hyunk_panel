@@ -3,6 +3,7 @@ import { requireUser } from '@/lib/auth/session';
 import { checkPermission } from '@/lib/auth/rbac';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { getProviderFileUrl } from '@/lib/storage';
+import { cleanupStaleBackupLogs } from '@/lib/storage/backupJob';
 import type { BackupLogRow, StorageProviderRow } from '@/types';
 
 export const runtime = 'nodejs';
@@ -17,6 +18,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
   const checked = await checkPermission(user, 'backups', params.id);
   if (checked instanceof Response) return checked;
+
+  // Auto-recovery: bersihkan log backup yang macet (zombie) >15 menit
+  await cleanupStaleBackupLogs().catch(() => undefined);
 
   const service = getSupabaseServiceClient();
   const { data: logs, error } = await service

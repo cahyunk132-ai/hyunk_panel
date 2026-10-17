@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { requireCronSecret } from '@/lib/cron';
-import { runBackupJob } from '@/lib/storage/backupJob';
+import { runBackupJob, cleanupStaleBackupLogs } from '@/lib/storage/backupJob';
 import { suspendExpired } from '@/lib/billing/suspendExpired';
 import { deleteExpiredData } from '@/lib/billing/deleteExpiredData';
 import { cleanupRetention } from '@/lib/billing/cleanupRetention';
@@ -15,7 +15,7 @@ export const maxDuration = 300;
  * GET /api/cron/backup — handler Vercel Cron (lihat vercel.json).
  *
  * - Validasi `Authorization: Bearer {CRON_SECRET}` (timing-safe compare).
- * - Jalankan maintenance billing sebelum pipeline backup.
+ * - Jalankan maintenance billing & pembersihan stale backup log sebelum pipeline backup.
  * - Ambil semua jadwal aktif yang sudah jatuh tempo (next_run_at <= now).
  * - Jalankan backup satu per satu; satu server gagal tidak menghentikan server lain.
  */
@@ -51,6 +51,15 @@ export async function GET(request: NextRequest) {
     };
   }
 
+  try {
+    maintenance.cleanup_stale_backups = await cleanupStaleBackupLogs();
+  } catch (error) {
+    maintenance.cleanup_stale_backups = {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Gagal cleanup stale backups',
+    };
+  }
+
   const service = getSupabaseServiceClient();
   const { data: schedules, error } = await service
     .from('backup_schedules')
@@ -63,8 +72,23 @@ export async function GET(request: NextRequest) {
     return Response.json({ ok: false, maintenance, error: error.message }, { status: 500 });
   }
 
+  const cronStart = Date.now();
+  // Sisakan 60 detik sebelum batas maxDuration (300 detik) untuk response & cleanup
+  const CRON_MAX_TOTAL_MS = 240_000;
+
   const results: Array<Record<string, unknown>> = [];
   for (const schedule of (schedules ?? []) as BackupScheduleRow[]) {
+    if (Date.now() - cronStart > CRON_MAX_TOTAL_MS) {
+      results.push({
+        schedule_id: schedule.id,
+        server_id: schedule.server_id,
+        ok: false,
+        skipped: true,
+        error: 'Dilewati: sisa batas waktu cron serverless tidak mencukupi, akan dijalankan pada putaran berikutnya',
+      });
+      continue;
+    }
+
     try {
       const result = await runBackupJob(schedule, 'cron');
       results.push({ schedule_id: schedule.id, server_id: schedule.server_id, ...result });

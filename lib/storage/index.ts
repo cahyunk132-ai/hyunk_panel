@@ -129,11 +129,12 @@ export async function uploadToProvider(
   filename: string,
   stream: ReadableStream<Uint8Array>,
   size?: number,
+  signal?: AbortSignal,
 ): Promise<UploadResult> {
   const serverFolder = sanitizePathSegment(serverName);
   switch (provider.provider) {
     case 'gdrive':
-      return gdrive.uploadToGDrive(await getValidAccessToken(provider), serverFolder, filename, stream, size);
+      return gdrive.uploadToGDrive(await getValidAccessToken(provider), serverFolder, filename, stream, size, signal);
     case 'dropbox':
       return dropbox.uploadToDropbox(await getValidAccessToken(provider), serverFolder, filename, stream, size);
     case 's3':

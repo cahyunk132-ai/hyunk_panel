@@ -155,43 +155,70 @@ export async function findGDriveFileId(
   return result.files?.[0]?.id ?? null;
 }
 
-/** Upload stream ke "Hyunk Panel Backups/{serverName}/{filename}". */
+/**
+ * Upload stream ke "Hyunk Panel Backups/{serverName}/{filename}" via Resumable Upload session.
+ * Mendukung file besar (>5 MB hingga multi-GB) tanpa batasan simple upload media.
+ */
 export async function uploadToGDrive(
   token: string,
   serverName: string,
   filename: string,
   stream: ReadableStream<Uint8Array>,
   size?: number,
+  signal?: AbortSignal,
 ): Promise<GDriveUploadResult> {
   const serverFolderId = await getGDriveBackupFolderId(token, serverName);
 
-  // 1. Metadata file (dapat ID lebih dulu).
-  const metaRes = await apiFetch('/drive/v3/files', {
+  // 1. Inisialisasi Resumable Upload session
+  const initHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-Upload-Content-Type': 'application/octet-stream',
+  };
+  if (size !== undefined && Number.isFinite(size) && size >= 0) {
+    initHeaders['X-Upload-Content-Length'] = String(size);
+  }
+
+  const initRes = await apiFetch('/upload/drive/v3/files?uploadType=resumable', {
     token,
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: initHeaders,
     body: JSON.stringify({ name: filename, parents: [serverFolderId] }),
+    signal,
   });
-  if (!metaRes.ok) {
-    throw new Error(`GDrive: gagal membuat metadata file → ${metaRes.status}: ${(await metaRes.text().catch(() => '')).slice(0, 300)}`);
+  if (initRes.status !== 200) {
+    const detail = (await initRes.text().catch(() => ''))
+      .replaceAll(token, '[redacted]')
+      .slice(0, 300);
+    throw new Error(`GDrive: gagal inisialisasi resumable upload → ${initRes.status}: ${detail}`);
   }
-  const file = (await metaRes.json()) as DriveFile;
 
-  // 2. Media — stream langsung, Content-Length bila ukuran diketahui.
-  const headers: Record<string, string> = { 'Content-Type': 'application/octet-stream' };
-  if (size !== undefined && Number.isFinite(size) && size >= 0) {
-    headers['Content-Length'] = String(size);
+  const uploadUrl = initRes.headers.get('location');
+  if (!uploadUrl) {
+    throw new Error('GDrive: response resumable upload tidak memiliki Location header');
   }
-  const upRes = await apiFetch(`/upload/drive/v3/files/${file.id}?uploadType=media`, {
-    token,
-    method: 'PATCH',
-    headers,
+
+  // 2. Stream data langsung ke resumable session uploadUrl via PUT
+  const uploadHeaders: Record<string, string> = {
+    'Content-Type': 'application/octet-stream',
+  };
+  if (size !== undefined && Number.isFinite(size) && size >= 0) {
+    uploadHeaders['Content-Length'] = String(size);
+  }
+
+  const upRes = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: uploadHeaders,
     body: stream,
     duplex: 'half',
-  } as RequestInit & { token: string; duplex: 'half' });
-  if (!upRes.ok) {
-    throw new Error(`GDrive: gagal upload media → ${upRes.status}: ${(await upRes.text().catch(() => '')).slice(0, 300)}`);
+    signal,
+  } as RequestInit & { duplex: 'half' });
+
+  if (upRes.status !== 200 && upRes.status !== 201) {
+    const detail = (await upRes.text().catch(() => '')).slice(0, 300);
+    throw new Error(`GDrive: gagal upload data ke resumable session → ${upRes.status}: ${detail}`);
   }
+
+  const file = (await upRes.json()) as DriveFile;
   return { fileId: file.id, fileName: filename, size };
 }
 

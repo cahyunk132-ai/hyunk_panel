@@ -3,12 +3,15 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { requireAdmin } from '@/lib/auth/session';
 import { getSupabaseServiceClient } from '@/lib/supabase/server';
 import { isStorageProviderType } from '@/lib/storage/provider-meta';
+import { cleanupStaleBackupLogs } from '@/lib/storage/backupJob';
+import { resolveServerWings } from '@/lib/wings/resolve';
 import { BACKUP_LOG_PAGE_SIZE } from '@/lib/utils/constants';
 import type {
   AdminBackupLogRow,
   AdminBackupStats,
   BackupLogStatus,
   BackupStatusFilter,
+  ServerRow,
   StorageProviderType,
 } from '@/types';
 
@@ -49,6 +52,9 @@ export async function GET(request: NextRequest) {
 
   const params = request.nextUrl.searchParams;
   const service = getSupabaseServiceClient();
+
+  // Auto-recovery: bersihkan log backup yang macet (zombie) >15 menit
+  await cleanupStaleBackupLogs().catch(() => undefined);
 
   // ── Filter ────────────────────────────────────────────────────────────────
   const statusParam = (params.get('status') ?? 'all') as BackupStatusFilter;
@@ -318,4 +324,65 @@ function endOfUtcDay(date: Date): Date {
   return new Date(
     Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 23, 59, 59, 999),
   );
+}
+
+/**
+ * POST /api/admin/backup-logs — aksi admin pada log backup:
+ * - action = 'cleanup_stale': jalankan pembersihan log zombie secara manual
+ * - action = 'mark_failed': tandai satu log tertentu sebagai failed
+ */
+export async function POST(request: NextRequest) {
+  const user = await requireAdmin();
+  if (user instanceof Response) return user;
+
+  const body = (await request.json().catch(() => ({}))) as {
+    action?: 'cleanup_stale' | 'mark_failed';
+    log_id?: string;
+  };
+
+  if (body.action === 'mark_failed' && body.log_id) {
+    const service = getSupabaseServiceClient();
+    const { data: log } = await service
+      .from('backup_logs')
+      .select('id, server_id, backup_uuid, status')
+      .eq('id', body.log_id)
+      .maybeSingle();
+
+    if (!log) {
+      return Response.json({ error: 'Log tidak ditemukan' }, { status: 404 });
+    }
+
+    if (log.backup_uuid && log.server_id) {
+      try {
+        const { data: server } = await service
+          .from('servers')
+          .select('*')
+          .eq('id', log.server_id)
+          .maybeSingle();
+        if (server) {
+          const resolved = await resolveServerWings(server as ServerRow);
+          if (!(resolved instanceof Response)) {
+            await resolved.client.deleteBackup(server.uuid, log.backup_uuid).catch(() => undefined);
+          }
+        }
+        await service.from('backups').delete().eq('uuid', log.backup_uuid);
+      } catch {
+        // best effort
+      }
+    }
+
+    await service
+      .from('backup_logs')
+      .update({
+        status: 'failed',
+        error_message: 'Dibatalkan oleh administrator panel',
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', log.id);
+
+    return Response.json({ ok: true, message: 'Log berhasil ditandai sebagai failed' });
+  }
+
+  const result = await cleanupStaleBackupLogs();
+  return Response.json({ ok: true, ...result });
 }
