@@ -81,6 +81,17 @@ export function parsePm2Processes(output: string): Pm2Process[] {
 }
 
 export async function getPm2Processes(vps: VpsRecord): Promise<Pm2Process[]> {
+  const checkResult = await execVpsCommand(
+    vps,
+    withPath('which pm2 || echo "NOT_FOUND"'),
+  );
+  if (checkResult.stdout.includes('NOT_FOUND')) {
+    const installResult = await execVpsCommand(vps, withPath('npm install -g pm2'));
+    assertCommandSucceeded(installResult, 'Gagal menginstall PM2');
+  } else if (checkResult.code !== 0) {
+    throw new Error('Gagal memeriksa instalasi PM2');
+  }
+
   const result = await execVpsCommand(vps, withPath('pm2 jlist'));
   const output = assertCommandSucceeded(result, 'Gagal membaca daftar proses PM2');
   return parsePm2Processes(output);
