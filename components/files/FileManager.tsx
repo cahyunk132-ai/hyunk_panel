@@ -11,7 +11,14 @@ import { ProgressBar } from '@/components/ui/ProgressBar';
 import { FileEditor } from './FileEditor';
 import { formatBytes } from '@/lib/utils/format';
 import { toast, updateToast } from '@/lib/utils/toast';
-import { uploadWithProgress } from '@/lib/utils/upload';
+import {
+  uploadWithProgress,
+  uploadErrorMessage,
+  nodeUnreachableHint,
+  UploadError,
+  type UploadResult,
+} from '@/lib/utils/upload';
+import { PROXY_UPLOAD_MAX_BYTES } from '@/lib/utils/constants';
 
 interface FileManagerProps {
   serverId: string;
@@ -140,34 +147,61 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
 
   async function upload(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
-    const count = fileList.length;
+    const files = Array.from(fileList);
+    const count = files.length;
     setBusy(true);
     setError(null);
     setNotice(null);
     setUploadProgress({ count, percent: 0 });
     const toastId = toast.loading(`Mengupload ${count} file… 0%`);
+
+    let lastPercent = -1;
+    const report = (percent: number, suffix = '') => {
+      if (percent === lastPercent) return;
+      lastPercent = percent;
+      setUploadProgress({ count, percent });
+      updateToast(
+        toastId,
+        percent >= 100
+          ? `Memproses ${count} file di node…`
+          : `Mengupload ${count} file${suffix}… ${percent}%`,
+        'loading',
+      );
+    };
+
     try {
       const res = await fetch(`/api/servers/${serverId}/files/upload`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ directory }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Gagal membuat URL upload');
+      const json = (await res.json()) as { url?: string; node?: string; error?: string };
+      if (!res.ok || !json.url) throw new Error(json.error || 'Gagal membuat URL upload');
+
       const form = new FormData();
-      Array.from(fileList).forEach((f) => form.append('files', f));
-      let lastPercent = -1;
-      const up = await uploadWithProgress(json.url as string, form, (percent) => {
-        if (percent === lastPercent) return;
-        lastPercent = percent;
-        setUploadProgress({ count, percent });
-        updateToast(
-          toastId,
-          percent >= 100 ? `Memproses ${count} file di node…` : `Mengupload ${count} file… ${percent}%`,
-          'loading',
-        );
-      });
-      if (!up.ok) throw new Error(`Upload gagal (Wings ${up.status})`);
+      files.forEach((f) => form.append('files', f));
+
+      let up: UploadResult;
+      try {
+        // Jalur utama: browser → Wings langsung (file besar tidak kena limit Vercel).
+        up = await uploadWithProgress(json.url, form, {
+          onProgress: (percent) => report(percent),
+        });
+      } catch (err) {
+        // Browser tidak bisa menjangkau node (CSP/CORS/jaringan). Sebelum
+        // mengulang, cek dulu: sering kali file SUDAH masuk ke node dan hanya
+        // pembacaan responsnya yang diblokir CORS.
+        if (!(err instanceof UploadError) || err.kind !== 'network') throw err;
+        const notUploaded = await findUnconfirmedUploads(files);
+        if (notUploaded.length === 0) {
+          up = { ok: true, status: 200, text: '' };
+        } else {
+          // File besar (> 4 MB) tetap butuh jalur langsung → pesan troubleshooting.
+          up = await uploadThroughPanel(notUploaded, report, json.node);
+        }
+      }
+
+      if (!up.ok) throw new Error(uploadErrorMessage(up, `Upload gagal (Wings ${up.status})`));
       const done = `${count} file terupload`;
       setNotice(done);
       updateToast(toastId, done, 'success');
@@ -181,6 +215,66 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
       setUploadProgress(null);
       if (uploadInput.current) uploadInput.current.value = '';
     }
+  }
+
+  /**
+   * Cek ke panel apakah file sudah benar-benar ada di node dengan ukuran sama
+   * (jalur langsung gagal di level browser, padahal Wings mungkin sudah
+   * menyimpannya — kasus khas CORS tanpa header Access-Control-Allow-Origin).
+   * Mengembalikan daftar file yang belum terupload (kosong = semua sudah masuk).
+   * Bila panel tidak bisa memverifikasi, file dianggap belum terupload.
+   */
+  async function findUnconfirmedUploads(files: File[]): Promise<File[]> {
+    const pending: File[] = [];
+    for (const file of files) {
+      const query = new URLSearchParams({
+        directory,
+        filename: file.name,
+        size: String(file.size),
+      });
+      try {
+        const res = await fetch(`/api/servers/${serverId}/files/upload?${query.toString()}`, {
+          cache: 'no-store',
+        });
+        const json = (await res.json().catch(() => ({}))) as { uploaded?: boolean };
+        if (!res.ok || json.uploaded !== true) pending.push(file);
+      } catch {
+        // Panel tidak bisa memverifikasi → anggap belum terupload.
+        pending.push(file);
+      }
+    }
+    return pending;
+  }
+
+  /**
+   * Jalur cadangan upload: file dikirim ke panel (PUT), lalu panel men-stream ke
+   * Wings. Dipakai saat browser diblokir CSP `connect-src` atau Wings tidak
+   * mengirim header CORS, sehingga upload langsung selalu "koneksi terputus".
+   */
+  async function uploadThroughPanel(
+    files: File[],
+    report: (percent: number, suffix?: string) => void,
+    nodeHost?: string,
+  ): Promise<UploadResult> {
+    for (const file of files) {
+      if (file.size > PROXY_UPLOAD_MAX_BYTES) {
+        const limitMb = Math.floor(PROXY_UPLOAD_MAX_BYTES / (1024 * 1024));
+        throw new Error(
+          `"${file.name}" (${formatBytes(file.size)}) lebih besar dari ${limitMb} MB, jadi tidak bisa diunggah lewat panel. ${nodeUnreachableHint(nodeHost)}`,
+        );
+      }
+      const url = `/api/servers/${serverId}/files/upload?directory=${encodeURIComponent(directory)}&filename=${encodeURIComponent(file.name)}`;
+      const result = await uploadWithProgress(url, file, {
+        method: 'PUT',
+        onProgress: (percent) => report(percent, ` (${file.name})`),
+      });
+      if (!result.ok) {
+        throw new Error(
+          uploadErrorMessage(result, `Upload "${file.name}" gagal (panel ${result.status})`),
+        );
+      }
+    }
+    return { ok: true, status: 200, text: '' };
   }
 
   function toggleSelect(name: string) {
