@@ -246,7 +246,10 @@ Dropdown permission & checkbox Ignore Player Limit di tabel auto-save (PUT) seti
 - **Console realtime** — WebSocket ke wings dengan renderer ANSI, auto-scroll, history command
   (arrow up/down), stats strip (CPU/RAM/uptime/network) dari event `stats`,
   token auto-refresh saat `token expiring`.
-- **File manager** — browse, edit (≤ 2 MB), rename, delete multi-select, compress/extract,
+- **File manager** — browse, edit (≤ 2 MB), rename, delete multi-select, compress (→ `.tar.gz`) /
+  extract — `zip`, `tar`, `tar.gz`/`tgz`, `tar.bz2`, `tar.xz`, `tar.zst`, `7z`, `rar`, serta
+  kompresi satu file (`gz`/`bz2`/`xz`/`zst`) mengikuti dukungan `mholt/archives` di Wings; arsip
+  berpassword tidak didukung,
   folder baru, upload langsung ke wings (multipart via signed URL — melewati limit 4.5 MB Vercel;
   bila CSP/CORS memblokir, otomatis fallback lewat proxy panel ≤ 4 MB — lihat
   [Troubleshooting upload](#troubleshooting-upload-file-csp--cors-node)),

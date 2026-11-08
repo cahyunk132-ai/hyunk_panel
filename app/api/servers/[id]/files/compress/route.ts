@@ -5,6 +5,28 @@ import { resolveServerWings, logActivity } from '@/lib/wings/resolve';
 
 export const runtime = 'nodejs';
 
+/**
+ * Terjemahkan error mentah Wings untuk decompress (lihat
+ * wings/router/router_server_files.go → postServerDecompressFiles) menjadi
+ * pesan yang bisa ditindaklanjuti user.
+ */
+function decompressErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : '';
+  if (/does not understand|unknown archive|no match/i.test(raw)) {
+    return 'Format arsip tidak dikenali Wings. Yang didukung: zip, tar/tar.gz/tar.bz2/tar.xz/tar.zst, 7z, dan rar.';
+  }
+  if (/in use by another process|text file busy/i.test(raw)) {
+    return 'Arsip berisi file yang sedang dipakai proses server. Hentikan server dulu, lalu ekstrak lagi.';
+  }
+  if (/password|encrypt|decrypt/i.test(raw)) {
+    return 'Arsip terenkripsi/password tidak bisa diekstrak Wings. Hapus password arsipnya lalu upload ulang.';
+  }
+  if (/no space left|not enough space|space available/i.test(raw)) {
+    return 'Sisa disk server tidak cukup untuk mengekstrak arsip ini.';
+  }
+  return raw || 'Gagal mengekstrak arsip';
+}
+
 /** POST /api/servers/{id}/files/compress — { root, files: [] } | { root, file, action: 'decompress' } */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   const user = await requireUser();
@@ -27,7 +49,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   try {
     if (body?.action === 'decompress') {
       if (!body.file) return Response.json({ error: 'Field file wajib untuk decompress' }, { status: 400 });
-      await resolved.client.decompressFile(resolved.server.uuid, root, body.file);
+      try {
+        await resolved.client.decompressFile(resolved.server.uuid, root, body.file);
+      } catch (err) {
+        return Response.json({ error: decompressErrorMessage(err) }, { status: 400 });
+      }
       await logActivity({
         userId: user.id,
         serverId: resolved.server.id,

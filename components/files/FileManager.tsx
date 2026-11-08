@@ -18,7 +18,7 @@ import {
   UploadError,
   type UploadResult,
 } from '@/lib/utils/upload';
-import { PROXY_UPLOAD_MAX_BYTES } from '@/lib/utils/constants';
+import { PROXY_UPLOAD_MAX_BYTES, isExtractableArchive } from '@/lib/utils/constants';
 
 interface FileManagerProps {
   serverId: string;
@@ -36,8 +36,6 @@ function parentPath(dir: string): string {
   parts.pop();
   return `/${parts.join('/')}`;
 }
-
-const ARCHIVE_RE = /\.(tar\.gz|tgz|tar|zip|gz)$/i;
 
 export function FileManager({ serverId, canEdit }: FileManagerProps) {
   const [directory, setDirectory] = useState('/');
@@ -415,7 +413,7 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
               )}
               {!loading && sorted.map((f) => {
                 const fullPath = joinPath(directory, f.name);
-                const isArchive = ARCHIVE_RE.test(f.name);
+                const isArchive = isExtractableArchive(f.name);
                 return (
                   <tr
                     key={f.name}
