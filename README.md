@@ -63,6 +63,7 @@ Salin `.env.local.example` → `.env.local` (lokal) atau isi di **Vercel → Set
 | `WINGS_SEED_NODE_TOKEN` | token Wings node existing (dari `/etc/pterodactyl/config.yml` di node, field `token`) |
 | `NEXT_PUBLIC_APP_URL` | `https://panel.wangstore.web.id` |
 | `NEXT_PUBLIC_BASE_DOMAIN` | base domain Subdomain Manager, default `wangstore.web.id` |
+| `NEXT_PUBLIC_WINGS_ORIGINS` | opsional — daftar origin node Wings untuk CSP `connect-src` (`https://node2.wangstore.web.id:8080,...`). Kosongkan bila semua node memakai subdomain `NEXT_PUBLIC_BASE_DOMAIN` (default sudah mengizinkan `https://*.<base>:*`) |
 | `TERMINAL_SERVICE_URL` | URL HTTPS terminal service eksternal, mis. `https://terminal.wangstore.web.id` |
 | `TERMINAL_JWT_SECRET` | secret HS256 yang sama dengan terminal service (**rahasia — hanya server**) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth Google Drive (auto backup) — lihat [Auto Backup](#auto-backup-system-cloud-storage) |
@@ -246,7 +247,9 @@ Dropdown permission & checkbox Ignore Player Limit di tabel auto-save (PUT) seti
   (arrow up/down), stats strip (CPU/RAM/uptime/network) dari event `stats`,
   token auto-refresh saat `token expiring`.
 - **File manager** — browse, edit (≤ 2 MB), rename, delete multi-select, compress/extract,
-  folder baru, upload langsung ke wings (multipart via signed URL — melewati limit 4.5 MB Vercel),
+  folder baru, upload langsung ke wings (multipart via signed URL — melewati limit 4.5 MB Vercel;
+  bila CSP/CORS memblokir, otomatis fallback lewat proxy panel ≤ 4 MB — lihat
+  [Troubleshooting upload](#troubleshooting-upload-file-csp--cors-node)),
   download via signed URL satu-kali-pakai.
 - **Players (Bedrock Edition)** — tab **Players** untuk server Bedrock (image `debian` /
   startup `bedrock_server`) membaca & menulis `allowlist.json` + `permissions.json` lewat Wings
@@ -656,6 +659,31 @@ supabase/migrations/012_vps_terminal.sql
 supabase/migrations/013_status_notifications.sql
 supabase/migrations/015_billing.sql
 ```
+
+## Troubleshooting upload file (CSP & CORS node)
+
+Upload di File Manager berjalan **langsung dari browser ke Wings** memakai signed token (supaya
+file besar tidak kena limit body 4.5 MB Vercel). Artinya browser — bukan server panel — yang
+menghubungi `https://<fqdn-node>:<port>`, sehingga ada dua hal yang wajib benar:
+
+1. **CSP `connect-src` panel** harus memuat origin node. Bila belum, DevTools menampilkan
+   `Refused to connect to 'https://node2...:8080/upload/file' because it violates ... connect-src`
+   dan UI menampilkan *“Koneksi ke node terputus saat upload”*.
+   - Default: seluruh subdomain `NEXT_PUBLIC_BASE_DOMAIN` sudah diizinkan pada semua port
+     (`https://*.wangstore.web.id:*`), jadi node `node2.wangstore.web.id:8080` langsung bekerja.
+   - Node di domain lain → isi `NEXT_PUBLIC_WINGS_ORIGINS` (pisahkan koma) lalu **redeploy**
+     (CSP dihitung saat build).
+   - Port eksplisit wajib: CSP tanpa `:<port>` hanya mengizinkan port default 443.
+2. **CORS Wings** harus mengizinkan origin panel. Wings mengirim
+   `Access-Control-Allow-Origin` dari `api.allowed_origins` (`/etc/pterodactyl/config.yml`).
+   Tambahkan `https://panel.wangstore.web.id` di daftar itu bila berbeda, lalu `systemctl restart wings`.
+   Tanpa header CORS, file bisa terlanjur masuk ke node tetapi browser melaporkan koneksi terputus.
+
+**Fallback otomatis**: bila jalur langsung gagal karena alasan jaringan/CSP/CORS, panel otomatis
+mengulang upload lewat endpoint panel `PUT /api/servers/{id}/files/upload?directory=…&filename=…`
+(panel men-stream body ke Wings). Fallback ini dibatasi `PROXY_UPLOAD_MAX_BYTES` (4 MB) karena
+batas body function Vercel — file lebih besar tetap harus lewat jalur langsung. Pesan error di UI
+menyebutkan langkah perbaikannya bila keduanya gagal.
 
 ## Catatan operasional
 
