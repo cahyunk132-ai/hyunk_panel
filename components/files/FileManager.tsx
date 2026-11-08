@@ -143,6 +143,15 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
     }
   }
 
+  /** Ekstrak satu arsip di direktori aktif (Wings: /files/decompress). */
+  async function extractArchive(name: string) {
+    await runAction(
+      () => apiAction('/compress', { root: directory, file: name, action: 'decompress' }),
+      `"${name}" diekstrak`,
+      `Mengekstrak "${name}"…`,
+    );
+  }
+
   async function upload(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
     const files = Array.from(fileList);
@@ -285,6 +294,12 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
   }
 
   const selectedArr = Array.from(selected);
+  /** File arsip tunggal yang sedang dipilih → tombol "Ekstrak" di bar seleksi. */
+  const selectedArchive =
+    selectedArr.length === 1
+      ? (sorted.find((f) => f.name === selectedArr[0] && !f.directory && isExtractableArchive(f.name))
+          ?.name ?? null)
+      : null;
 
   return (
     <div className="space-y-3">
@@ -361,6 +376,16 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
           <div className="flex-1" />
           {canEdit && (
             <>
+              {selectedArchive && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  loading={busy}
+                  onClick={() => extractArchive(selectedArchive)}
+                >
+                  ⇤ Ekstrak
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="secondary"
@@ -387,7 +412,7 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
       )}
 
       {/* Tabel file */}
-      <div className="overflow-hidden rounded-xl border border-line bg-base-850">
+      <div className="overflow-x-auto rounded-xl border border-line bg-base-850">
         <table className="w-full text-sm" aria-busy={loading}>
             <thead>
               <tr className="border-b border-line-soft text-left text-[11px] uppercase tracking-wide text-ink-faint">
@@ -454,13 +479,29 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
                     <td className="hidden px-3 py-2 text-xs text-ink-muted md:table-cell">
                       {f.modified ? new Date(f.modified).toLocaleString('id-ID') : '—'}
                     </td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center justify-end gap-1 text-xs opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
+                    <td className="px-2 py-2 md:px-3">
+                      {/*
+                        Aksi sengaja SELALU terlihat (bukan hover-only seperti
+                        sebelumnya): di layar sentuh / tablet `group-hover` tidak
+                        pernah aktif sehingga tombol Ekstrak tidak muncul sama sekali.
+                      */}
+                      <div className="flex flex-wrap items-center justify-end gap-1 text-xs">
+                        {isArchive && !f.directory && canEdit && (
+                          <button
+                            onClick={() => extractArchive(f.name)}
+                            className="rounded-md border border-accent/40 bg-accent-soft px-2 py-1 font-medium text-accent hover:bg-accent/20"
+                            title="Ekstrak arsip ini ke folder yang sedang dibuka"
+                            aria-label={`Ekstrak ${f.name}`}
+                          >
+                            ⇤ Ekstrak
+                          </button>
+                        )}
                         {!f.directory && (
                           <button
                             onClick={() => download(f.name)}
                             className="rounded px-1.5 py-1 text-ink-muted hover:text-accent"
                             title="Download"
+                            aria-label={`Download ${f.name}`}
                           >
                             ⬇
                           </button>
@@ -471,29 +512,10 @@ export function FileManager({ serverId, canEdit }: FileManagerProps) {
                               onClick={() => setRenaming({ name: f.name, value: f.name })}
                               className="rounded px-1.5 py-1 text-ink-muted hover:text-accent"
                               title="Rename"
+                              aria-label={`Rename ${f.name}`}
                             >
                               ✎
                             </button>
-                            {isArchive && !f.directory && (
-                              <button
-                                onClick={() =>
-                                  runAction(
-                                    () =>
-                                      apiAction('/compress', {
-                                        root: directory,
-                                        file: f.name,
-                                        action: 'decompress',
-                                      }),
-                                    'Arsip diekstrak',
-                                    'Mengekstrak arsip…',
-                                  )
-                                }
-                                className="rounded px-1.5 py-1 text-ink-muted hover:text-accent"
-                                title="Ekstrak"
-                              >
-                                ⇤
-                              </button>
-                            )}
                             <button
                               onClick={() => setConfirmDelete([f.name])}
                               className="rounded px-1.5 py-1 text-ink-muted hover:text-red-400"
