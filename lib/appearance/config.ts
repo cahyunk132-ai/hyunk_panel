@@ -8,6 +8,7 @@ export const PREFS_STORAGE_KEY = 'hyunk-appearance';
 export const CUSTOM_BG_STORAGE_KEY = 'hyunk-appearance-bg';
 
 export type PaletteId =
+  | 'wangstore'
   | 'dark'
   | 'light'
   | 'ocean'
@@ -20,7 +21,7 @@ export type PaletteId =
 /** 'system' = ikut preferensi OS (dark/light) — memakai palet dark atau light. */
 export type ThemeId = PaletteId | 'system';
 
-export const DEFAULT_THEME: ThemeId = 'dark';
+export const DEFAULT_THEME: ThemeId = 'wangstore';
 
 export interface Palette {
   label: string;
@@ -39,6 +40,20 @@ export interface Palette {
 }
 
 export const PALETTES: Record<PaletteId, Palette> = {
+  wangstore: {
+    label: 'Wangstore',
+    emoji: '🟦',
+    description: 'Tema website API — navy glass, aksen biru langit',
+    mode: 'dark',
+    bgPrimary: '#050b18',
+    bgSecondary: '#0c1a30',
+    bgSidebar: '#070f1e',
+    textPrimary: '#eaf6ff',
+    textSecondary: '#94a9b9',
+    accent: '#38bdf8',
+    border: '#162738',
+    card: '#0a1526',
+  },
   dark: {
     label: 'Dark',
     emoji: '🌑',

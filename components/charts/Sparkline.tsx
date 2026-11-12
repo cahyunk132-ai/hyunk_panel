@@ -11,7 +11,7 @@ export function Sparkline({
   data2,
   domainMax,
   height = 72,
-  stroke = '#3ecfcf',
+  stroke = '#38bdf8',
   stroke2 = '#f59e0b',
   label,
   formatValue,
@@ -103,7 +103,7 @@ export function Sparkline({
             x2={W}
             y1={H * f}
             y2={H * f}
-            stroke="#232a3a"
+            stroke="#162738"
             strokeWidth="0.5"
             strokeDasharray="3 4"
           />

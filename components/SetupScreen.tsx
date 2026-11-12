@@ -8,8 +8,8 @@ export function SetupScreen() {
     <div className="mx-auto w-full max-w-2xl space-y-6 px-8 py-10">
       <div className="text-center">
         <svg className="mx-auto h-12 w-12" viewBox="0 0 64 64">
-          <rect width="64" height="64" rx="14" fill="#171b26" />
-          <path d="M18 16h7v12h14V16h7v32h-7V35H25v13h-7z" fill="#3ecfcf" />
+          <rect width="64" height="64" rx="14" fill="#0a1526" />
+          <path d="M18 16h7v12h14V16h7v32h-7V35H25v13h-7z" fill="#38bdf8" />
         </svg>
         <h1 className="mt-4 text-xl font-bold">HYUNK PANEL</h1>
         <p className="mt-1 text-sm text-ink-muted">One Panel. Every Node. Every Server.</p>
